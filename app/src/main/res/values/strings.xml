@@ -23,4 +23,41 @@
     <string name="director">Director</string>
     <string name="cast">Cast</string>
     <string name="synopsis">Synopsis</string>
+    <!-- Settings Strings -->
+    <string name="pref_category_general">General</string>
+    <string name="pref_category_about">About</string>
+
+    <string name="pref_key_quality">video_quality</string>
+    <string name="pref_title_quality">Default Video Quality</string>
+    <string name="pref_summary_quality">Select the default streaming quality</string>
+
+    <string name="pref_key_autoplay">autoplay</string>
+    <string name="pref_title_autoplay">Autoplay Next Episode</string>
+    <string name="pref_summary_autoplay">Automatically play the next episode in a series</string>
+
+    <string name="pref_key_version">app_version_key</string>
+    <string name="pref_title_version">App Version</string>
+    <string name="app_version">1.0.0</string>
+
+    <string name="pref_key_about">about_app</string>
+    <string name="pref_title_about">About KMovies App</string>
+    <string name="pref_summary_about">Information about the application and licenses</string>
+
+    <string name="pref_key_back">back_to_main</string>
+    <string name="pref_title_back">Back to Main</string>
+
+    <!-- Quality Arrays -->
+    <string-array name="quality_entries">
+        <item>Auto</item>
+        <item>1080p (Full HD)</item>
+        <item>720p (HD)</item>
+        <item>480p (SD)</item>
+    </string-array>
+    <string-array name="quality_values">
+        <item>auto</item>
+        <item>1080</item>
+        <item>720</item>
+        <item>480</item>
+    </string-array>
+
 </resources>

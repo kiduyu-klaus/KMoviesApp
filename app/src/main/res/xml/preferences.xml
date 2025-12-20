@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <PreferenceCategory
+        android:title="@string/pref_category_general">
+
+        <ListPreference
+            android:key="@string/pref_key_quality"
+            android:title="@string/pref_title_quality"
+            android:summary="@string/pref_summary_quality"
+            android:defaultValue="auto"
+            android:entries="@array/quality_entries"
+            android:entryValues="@array/quality_values" />
+
+        <SwitchPreferenceCompat
+            android:key="@string/pref_key_autoplay"
+            android:title="@string/pref_title_autoplay"
+            android:summary="@string/pref_summary_autoplay"
+            android:defaultValue="true" />
+
+    </PreferenceCategory>
+
+    <PreferenceCategory
+        android:title="@string/pref_category_about">
+
+        <Preference
+            android:key="@string/pref_key_version"
+            android:title="@string/pref_title_version"
+            android:summary="@string/app_version"
+            android:selectable="false" />
+
+        <Preference
+            android:key="@string/pref_key_about"
+            android:title="@string/pref_title_about"
+            android:summary="@string/pref_summary_about" />
+
+    </PreferenceCategory>
+
+    <Preference
+        android:key="@string/pref_key_back"
+        android:title="@string/pref_title_back"
+        app:is
+        app:icon="@drawable/ic_arrow_back_white_24dp" />
+
+</PreferenceScreen>

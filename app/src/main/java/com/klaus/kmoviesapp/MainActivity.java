@@ -77,6 +77,7 @@ public class MainActivity extends FragmentActivity {
         categories.add(new Category("Genre", "/genre"));
         categories.add(new Category("Country", "/country"));
         categories.add(new Category("Year", "/year"));
+        categories.add(new Category("Settings", "settings"));
 
         categoryAdapter = new CategoryAdapter(this, categories, new CategoryAdapter.OnCategoryClickListener() {
             @Override
@@ -129,6 +130,10 @@ public class MainActivity extends FragmentActivity {
             scraperType = ScraperTask.ScraperType.TV_SHOWS;
         } else if (categoryPath.equals("/top-imdb")) {
             scraperType = ScraperTask.ScraperType.TOP_IMDB;
+        } else if (categoryPath.equals("settings")) {
+            openSettingsActivity();
+            showLoading(false);
+            return;
         } else {
             // For Genre, Country, Year - open browse activity
             openBrowseActivity(category);
@@ -163,6 +168,11 @@ public class MainActivity extends FragmentActivity {
     private void openMovieDetails(Movie movie) {
         Intent intent = new Intent(this, MovieDetailActivity.class);
         intent.putExtra("movie", movie);
+        startActivity(intent);
+    }
+
+    private void openSettingsActivity() {
+        Intent intent = new Intent(this, SettingsActivity.class);
         startActivity(intent);
     }
 

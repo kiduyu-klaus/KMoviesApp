@@ -59,6 +59,13 @@
             android:screenOrientation="landscape"
             android:theme="@style/Theme.Leanback" />
 
+        <!-- Settings Activity -->
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="false"
+            android:screenOrientation="landscape"
+            android:theme="@style/Theme.Leanback" />
+
     </application>
 
 </manifest>
