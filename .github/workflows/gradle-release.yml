@@ -1,1 +1,164 @@
+name: Android CI/CD - Build and Release APK
 
+on:
+  push:
+    branches: [ main, develop ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write # Required for softprops/action-gh-release to create a release
+  actions: read # Required for the notify job to check build status
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: Build Release APK (unsigned)
+        run: ./gradlew assembleRelease --stacktrace
+        continue-on-error: true
+
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: kmovies-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
+
+      - name: Upload Release APK
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: kmovies-release-apk
+          path: app/build/outputs/apk/release/app-release-unsigned.apk
+          retention-days: 30
+
+      - name: Get APK Info
+        run: |
+          echo "Debug APK size: $(du -h app/build/outputs/apk/debug/app-debug.apk | cut -f1)"
+          if [ -f app/build/outputs/apk/release/app-release-unsigned.apk ]; then
+            echo "Release APK size: $(du -h app/build/outputs/apk/release/app-release-unsigned.apk | cut -f1)"
+          fi
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download Debug APK
+        uses: actions/download-artifact@v4
+        with:
+          name: kmovies-debug-apk
+          path: ./artifacts
+
+      - name: Download Release APK
+        uses: actions/download-artifact@v4
+        with:
+          name: kmovies-release-apk
+          path: ./artifacts
+        continue-on-error: true
+
+      - name: Get version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Rename APK files
+        run: |
+          mv ./artifacts/app-debug.apk ./artifacts/KMoviesApp-${{ steps.get_version.outputs.VERSION }}-debug.apk
+          if [ -f ./artifacts/app-release-unsigned.apk ]; then
+            mv ./artifacts/app-release-unsigned.apk ./artifacts/KMoviesApp-${{ steps.get_version.outputs.VERSION }}-release-unsigned.apk
+          fi
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: KMovies App ${{ steps.get_version.outputs.VERSION }}
+          body: |
+            ## KMovies Android TV App Release ${{ steps.get_version.outputs.VERSION }}
+            
+            ### What's New
+            - Check the commit history for detailed changes
+            
+            ### Installation
+            1. Download the APK file below
+            2. Transfer to your Android TV device
+            3. Enable "Install from Unknown Sources" in Settings
+            4. Install the APK
+            
+            ### Files
+            - **Debug APK**: For testing and development
+            - **Release APK**: Optimized for production (unsigned)
+            
+            ### Requirements
+            - Android TV device with Android 5.0 (API 21) or higher
+            - Internet connection for streaming
+            
+            ### Notes
+            - The release APK is unsigned. For production use, sign it with your keystore.
+            - Debug APK includes debugging information and is larger in size.
+          files: |
+            ./artifacts/KMoviesApp-${{ steps.get_version.outputs.VERSION }}-debug.apk
+            ./artifacts/KMoviesApp-${{ steps.get_version.outputs.VERSION }}-release-unsigned.apk
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  notify:
+    name: Build Status Notification
+    needs: build
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: Build Success
+        if: needs.build.result == 'success'
+        run: |
+          echo "✅ Build completed successfully!"
+          echo "APK files are available in the artifacts."
+
+      - name: Build Failed
+        if: needs.build.result == 'failure'
+        run: |
+          echo "❌ Build failed!"
+          echo "Check the build logs for errors."
+          exit 1
