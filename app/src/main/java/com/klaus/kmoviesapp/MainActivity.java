@@ -8,6 +8,7 @@ import android.widget.ProgressBar;
 import android.widget.Toast;
 
 import androidx.fragment.app.FragmentActivity;
+import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -55,7 +56,7 @@ public class MainActivity extends FragmentActivity {
 
         // Setup movies RecyclerView
         moviesRecyclerView.setLayoutManager(
-            new LinearLayoutManager(this, LinearLayoutManager.VERTICAL, false)
+            new GridLayoutManager(this, 4)
         );
 
         currentMovies = new ArrayList<>();
