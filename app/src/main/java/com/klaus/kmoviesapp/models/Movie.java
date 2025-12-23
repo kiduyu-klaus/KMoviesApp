@@ -18,6 +18,8 @@ public class Movie implements Serializable {
     private String director;
     private String detailUrl;
     private String streamUrl;
+    private String actors;
+    private String keywords;
 
     public Movie() {
     }
@@ -157,5 +159,21 @@ public class Movie implements Serializable {
                 ", year='" + year + '\'' +
                 ", rating='" + rating + '\'' +
                 '}';
+    }
+
+    public void setActors(String actors) {
+        this.actors = actors;
+    }
+
+    public String getActors() {
+        return actors;
+    }
+
+    public void setKeywords(String keywords) {
+        this.keywords = keywords;
+    }
+
+    public String getKeywords() {
+        return keywords;
     }
 }

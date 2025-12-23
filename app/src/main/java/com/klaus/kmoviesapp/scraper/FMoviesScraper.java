@@ -273,9 +273,10 @@ public class FMoviesScraper {
         }
     }
 
+
     /**
      * Scrape detailed information for a specific movie
-     * Updated to match structure: <section id="nxplayer-detail">
+     * Updated to match structure: <div class="card bg-dark mb-3 mov-info">
      */
     public static Movie scrapeMovieDetails(String detailUrl) {
         Movie movie = new Movie();
@@ -283,112 +284,135 @@ public class FMoviesScraper {
         try {
             Log.d(TAG, "Scraping movie details: " + detailUrl);
 
-            // Fetch HTML using OkHttp
-            //String html = fetchHtml(detailUrl);
-
             // Parse with Jsoup
             Document doc = createConnection(detailUrl).get();
 
-            // Extract title from <h1 itemprop="name"> inside <section id="nxplayer-detail">
-            Element titleElement = doc.selectFirst("section#nxplayer-detail h1[itemprop=name], section#nxplayer-detail h1");
+            // Extract movie ID from data-mid attribute
+            Element midElement = doc.selectFirst("#mid[data-mid]");
+            if (midElement != null) {
+                movie.setId(midElement.attr("data-mid"));
+
+                // Extract type from data-mode attribute
+                String mode = midElement.attr("data-mode");
+                if (!mode.isEmpty()) {
+                    movie.setType(mode); // "movie" or "tv"
+                }
+            }
+
+            // Extract title from <h1 class="card-title">
+            Element titleElement = doc.selectFirst("div.card-body h1.card-title, h1.card-title");
             if (titleElement != null) {
                 movie.setTitle(titleElement.text().trim());
             }
 
-            // Extract description from <p> inside the body div
-            Element descElement = doc.selectFirst("section#nxplayer-detail div.body p");
+            // Extract description from <p> inside fst-italic div
+            Element descElement = doc.selectFirst("div.fst-italic p");
             if (descElement != null) {
                 movie.setDescription(descElement.text().trim());
             }
 
-            // Extract rating, quality, and duration from <div class="status">
-            Element statusDiv = doc.selectFirst("section#nxplayer-detail div.status");
-            if (statusDiv != null) {
-                // Extract rating from <span class="imdb">
-                Element ratingElement = statusDiv.selectFirst("span.imdb");
-                if (ratingElement != null) {
-                    String ratingText = ratingElement.text().trim();
-                    // Remove star icon if present
-                    ratingText = ratingText.replace("★", "").trim();
-                    movie.setRating(ratingText);
+            // Extract metadata from the structured content
+            Element cardBody = doc.selectFirst("div.card-body");
+            if (cardBody != null) {
+                // Extract Genre
+                Element genreElement = cardBody.selectFirst("p:has(strong:contains(Genre:))");
+                if (genreElement != null) {
+                    Elements genreLinks = genreElement.select("a");
+                    StringBuilder genres = new StringBuilder();
+                    for (Element link : genreLinks) {
+                        if (genres.length() > 0) genres.append(", ");
+                        genres.append(link.text().trim());
+                    }
+                    movie.setGenre(genres.toString());
                 }
 
-                // Extract quality from <span class="quality">
-                Element qualityElement = statusDiv.selectFirst("span.quality");
+                // Extract Actors
+                Element actorElement = cardBody.selectFirst("p:has(strong:contains(Actor:))");
+                if (actorElement != null) {
+                    Elements actorLinks = actorElement.select("a");
+                    StringBuilder actors = new StringBuilder();
+                    for (Element link : actorLinks) {
+                        if (actors.length() > 0) actors.append(", ");
+                        actors.append(link.text().trim());
+                    }
+                    movie.setActors(actors.toString());
+                }
+
+                // Extract Director
+                Element directorElement = cardBody.selectFirst("p:has(strong:contains(Director:))");
+                if (directorElement != null) {
+                    String directorText = directorElement.text().replace("Director:", "").trim();
+                    movie.setDirector(directorText);
+                }
+
+                // Extract Country
+                Element countryElement = cardBody.selectFirst("p:has(strong:contains(Country:))");
+                if (countryElement != null) {
+                    Element countryLink = countryElement.selectFirst("a");
+                    if (countryLink != null) {
+                        movie.setCountry(countryLink.text().trim());
+                    }
+                }
+
+                // Extract Duration
+                Element durationElement = cardBody.selectFirst("p:has(strong:contains(Duration:))");
+                if (durationElement != null) {
+                    String durationText = durationElement.text().replace("Duration:", "").trim();
+                    movie.setDuration(durationText);
+                }
+
+                // Extract Quality
+                Element qualityElement = cardBody.selectFirst("p:has(strong:contains(Quality:)) span.badge");
                 if (qualityElement != null) {
                     movie.setQuality(qualityElement.text().trim());
                 }
 
-                // Extract duration from remaining span (e.g., "129 min")
-                Elements spans = statusDiv.select("span");
-                for (Element span : spans) {
-                    String text = span.text().trim();
-                    if (text.contains("min") && !text.contains("imdb") && !span.hasClass("quality")) {
-                        movie.setDuration(text);
-                        break;
+                // Extract Release Year
+                Element releaseElement = cardBody.selectFirst("p:has(strong:contains(Release:))");
+                if (releaseElement != null) {
+                    Element releaseLink = releaseElement.selectFirst("a");
+                    if (releaseLink != null) {
+                        movie.setYear(releaseLink.text().trim());
+                    }
+                }
+
+                // Extract IMDb rating
+                Element imdbElement = cardBody.selectFirst("p:has(strong:contains(IMDb:))");
+                if (imdbElement != null) {
+                    String ratingText = imdbElement.text().replace("IMDb:", "").trim();
+                    if (!ratingText.equals("-") && !ratingText.isEmpty()) {
+                        movie.setRating(ratingText);
                     }
                 }
             }
 
-            // Extract metadata from <div class="meta">
-            Element metaDiv = doc.selectFirst("section#nxplayer-detail div.meta");
-            if (metaDiv != null) {
-                Elements metaRows = metaDiv.select("div");
-
-                for (Element row : metaRows) {
-                    Element labelElem = row.selectFirst("div");
-                    Element valueElem = row.selectFirst("span");
-
-                    if (labelElem != null && valueElem != null) {
-                        String label = labelElem.text().toLowerCase().trim().replace(":", "");
-                        String value = valueElem.text().trim();
-
-                        if (label.contains("country")) {
-                            movie.setCountry(value);
-                        } else if (label.contains("genre")) {
-                            movie.setGenre(value);
-                        } else if (label.contains("director")) {
-                            movie.setDirector(value);
-                        } else if (label.contains("release") || label.equals("release")) {
-                            movie.setYear(value);
-                        } else if (label.contains("type")) {
-                            // Set movie type (Movies or TV-Shows)
-                            if (value.toLowerCase().contains("tv")) {
-                                movie.setType("tv");
-                            } else {
-                                movie.setType("movie");
-                            }
-                        }
-                    }
+            // Extract keywords from card-footer
+            Element keywordsElement = doc.selectFirst("div.card-footer");
+            if (keywordsElement != null) {
+                String keywordsText = keywordsElement.text().replace("Keywords:", "").trim();
+                if (!keywordsText.equals("-") && !keywordsText.isEmpty()) {
+                    movie.setKeywords(keywordsText);
                 }
             }
 
-            // Extract backdrop/poster image from <div class="poster"> or wallpaper
-            Element posterElement = doc.selectFirst("section#nxplayer-detail div.poster img[itemprop=image]");
+            // Extract poster/thumbnail image
+            Element posterElement = doc.selectFirst("div.col-lg-2 img.lazy, div.col-lg-2 img");
             if (posterElement != null) {
-                String posterUrl = posterElement.attr("src");
+                String posterUrl = posterElement.attr("data-src");
                 if (posterUrl.isEmpty()) {
-                    posterUrl = posterElement.attr("data-src");
+                    posterUrl = posterElement.attr("src");
                 }
-                movie.setBackdropUrl(posterUrl);
+                movie.setThumbnailUrl(posterUrl);
+            }
 
-                // Also set as thumbnail if not already set
-                if (movie.getThumbnailUrl() == null || movie.getThumbnailUrl().isEmpty()) {
-                    movie.setThumbnailUrl(posterUrl);
+            // Extract backdrop/cover image
+            Element coverElement = doc.selectFirst("#cover-img");
+            if (coverElement != null) {
+                String backdropUrl = coverElement.attr("data-src");
+                if (backdropUrl.isEmpty()) {
+                    backdropUrl = coverElement.attr("src");
                 }
-            } else {
-                // Try getting from wallpaper background
-                Element wallpaperElement = doc.selectFirst("div.wallpaper-bg");
-                if (wallpaperElement != null) {
-                    String style = wallpaperElement.attr("style");
-                    if (style.contains("background-image:url(")) {
-                        String backdropUrl = style.substring(
-                                style.indexOf("url(") + 4,
-                                style.indexOf(")")
-                        );
-                        movie.setBackdropUrl(backdropUrl);
-                    }
-                }
+                movie.setBackdropUrl(backdropUrl);
             }
 
             movie.setDetailUrl(detailUrl);
@@ -405,6 +429,8 @@ public class FMoviesScraper {
 
         return movie;
     }
+
+
     /**
      * Extract streaming URL from movie page
      */
