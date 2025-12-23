@@ -9,10 +9,13 @@ import android.widget.Toast;
 
 import androidx.annotation.OptIn;
 import androidx.fragment.app.FragmentActivity;
+import androidx.media3.common.C;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.common.util.UnstableApi;
+import androidx.media3.datasource.DataSource;
+import androidx.media3.datasource.DefaultHttpDataSource;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.exoplayer.source.MediaSource;
@@ -64,9 +67,22 @@ public class PlayerActivity extends FragmentActivity {
     @OptIn(markerClass = UnstableApi.class)
     private void initializePlayer() {
         try {
-            // Create ExoPlayer instance
+            // Create custom HttpDataSource.Factory with better configuration
+            DefaultHttpDataSource.Factory httpDataSourceFactory =
+                    new DefaultHttpDataSource.Factory()
+                            .setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                            .setConnectTimeoutMs(30000)
+                            .setReadTimeoutMs(30000)
+                            .setAllowCrossProtocolRedirects(true)
+                            .setKeepPostFor302Redirects(true);
+
+            // Create DataSource.Factory
+            DataSource.Factory dataSourceFactory = httpDataSourceFactory;
+
+            // Create ExoPlayer instance with custom data source factory
             player = new ExoPlayer.Builder(this)
-                    .setMediaSourceFactory(new DefaultMediaSourceFactory(this))
+                    .setMediaSourceFactory(new DefaultMediaSourceFactory(this)
+                            .setDataSourceFactory(dataSourceFactory))
                     .build();
 
             // Bind player to the view
@@ -117,14 +133,17 @@ public class PlayerActivity extends FragmentActivity {
                 }
             });
 
+            // Use hardcoded URL for testing or streamUrl from Intent
+            String videoUrl = "http://dl8.tabartosh32.fun/English/Series/The.Night.Agent/S02/720p-EBTV-SoftSub/The.Night.Agent.S02E01.720p.WEB-DL.SoftSub.EBTV.mkv";
+
             // Create media item
-            MediaItem mediaItem = MediaItem.fromUri(streamUrl);
-            
+            MediaItem mediaItem = MediaItem.fromUri(videoUrl);
+
             // Set media item and prepare
             player.setMediaItem(mediaItem);
             player.prepare();
 
-            Log.d(TAG, "Player initialized with URL: " + streamUrl);
+            Log.d(TAG, "Player initialized with URL: " + videoUrl);
 
         } catch (Exception e) {
             Log.e(TAG, "Error initializing player: " + e.getMessage());

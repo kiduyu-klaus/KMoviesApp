@@ -33,3 +33,6 @@ google-services.json
 # Android Profiling
 *.hprof
 tt.tct
+tt.html
+ss.js
+sw.js

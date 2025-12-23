@@ -1,5 +1,6 @@
 package com.klaus.kmoviesapp.scraper;
 
+import android.util.Base64;
 import android.util.Log;
 
 import com.klaus.kmoviesapp.models.Movie;
@@ -11,9 +12,12 @@ import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 
 import java.io.IOException;
+import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLSocketFactory;
@@ -52,7 +56,7 @@ public class FMoviesScraper {
             };
 
             SSLContext sslContext = SSLContext.getInstance("SSL");
-            sslContext.init(null, trustAllCerts, new java.security.SecureRandom());
+            sslContext.init(null, trustAllCerts, new SecureRandom());
             //socketFactory = sslContext.getSocketFactory();
             return sslContext;
         } catch (Exception e) {
@@ -232,8 +236,8 @@ public class FMoviesScraper {
             if (movie.getDetailUrl() != null) {
                 String url = movie.getDetailUrl();
                 // Look for a year pattern in the URL
-                java.util.regex.Pattern yearPattern = java.util.regex.Pattern.compile("-(\\d{4})-|/(\\d{4})/");
-                java.util.regex.Matcher matcher = yearPattern.matcher(url);
+                Pattern yearPattern = Pattern.compile("-(\\d{4})-|/(\\d{4})/");
+                Matcher matcher = yearPattern.matcher(url);
                 if (matcher.find()) {
                     String year = matcher.group(1) != null ? matcher.group(1) : matcher.group(2);
                     if (year != null && year.matches("\\d{4}")) {
@@ -432,56 +436,209 @@ public class FMoviesScraper {
 
 
     /**
-     * Extract streaming URL from movie page
+     * Extract streaming URL from movie page using the site's AJAX API
+     * Based on the actual implementation from the site's JavaScript
      */
-    public static String extractStreamUrl(String detailUrl) {
+    public static String extractStreamUrl(String detailUrl, String movieId, int serverNumber) {
+        String fallback="https://netusa.xyz/watch/?v21#ZERDYTBCbGh4K1NkVzh3ZHR6d25XM0dDOEhSVndHL01rTFk1UjR3MFRmNE1wOUQ4SlRNUGZENGVXdFdUZGFMZDduM3VTQjJOdm13PQ";
         try {
             Log.d(TAG, "Extracting stream URL from: " + detailUrl);
-            Document doc = createConnection(detailUrl).get();
 
-            // Look for iframe sources
-            Elements iframes = doc.select("iframe[src]");
-            for (Element iframe : iframes) {
-                String src = iframe.attr("src");
-                if (src.contains("embed") || src.contains("player") || src.contains("stream")) {
-                    Log.d(TAG, "Found potential stream URL: " + src);
-                    return src;
+            // Base64 encoded player URL: "aHR0cHM6Ly9uZXR1c2EueHl6"
+            String plyURL = "https://netusa.xyz";
+
+            if (movieId == null || movieId.isEmpty()) {
+                Document doc = createConnection(detailUrl).get();
+                Element midElement = doc.selectFirst("#mid[data-mid]");
+                if (midElement != null) {
+                    movieId = midElement.attr("data-mid");
+                    Log.d(TAG, "Extracted movie ID: " + movieId);
+                } else {
+                    Log.e(TAG, "Could not find movie ID");
+                    return fallback;
                 }
             }
 
-            // Look for video sources
-            Elements videos = doc.select("video source[src]");
-            if (!videos.isEmpty()) {
-                String src = videos.first().attr("src");
-                Log.d(TAG, "Found video source: " + src);
-                return src;
-            }
+            // Build the request body JSON - matches the JavaScript implementation
+            // fetchMoviesJSON uses: {"mid": "movie_id", "srv": "server_number"}
+            String requestBody = String.format("{\"mid\":\"%s\",\"srv\":\"%d\"}", movieId, serverNumber);
 
-            // Look for data attributes that might contain video URLs
-            Elements dataElements = doc.select("[data-src], [data-url], [data-video]");
-            for (Element elem : dataElements) {
-                String dataSrc = elem.attr("data-src");
-                if (dataSrc.isEmpty()) {
-                    dataSrc = elem.attr("data-url");
-                }
-                if (dataSrc.isEmpty()) {
-                    dataSrc = elem.attr("data-video");
-                }
-                if (dataSrc.contains(".m3u8") || dataSrc.contains(".mp4")) {
-                    Log.d(TAG, "Found stream URL in data attribute: " + dataSrc);
-                    return dataSrc;
-                }
+            Log.d(TAG, "Requesting stream with server " + serverNumber);
+            Log.d(TAG, "Request body: " + requestBody);
+
+            // Make POST request to the player API
+            Connection.Response response = Jsoup.connect(plyURL)
+                    .method(Connection.Method.POST)
+                    .ignoreContentType(true)
+                    .header("Accept", "application/json")
+                    .header("Content-Type", "application/json")
+                    .header("Referer", detailUrl)
+                    .header("Origin", "https://ww4.fmovies.co")
+                    .requestBody(requestBody)
+                    .timeout(10000)
+                    .execute();
+
+            String responseBody = response.body();
+            Log.d(TAG, "API Response: " + responseBody);
+
+            // Parse the JSON response to extract the stream URL
+            String streamUrl = parseStreamUrlFromResponse(responseBody);
+
+            if (streamUrl != null && !streamUrl.isEmpty()) {
+                Log.d(TAG, "Successfully extracted stream URL: " + streamUrl);
+                return streamUrl;
+            } else {
+                Log.w(TAG, "No stream URL found in response for server " + serverNumber);
+                return fallback;
             }
 
         } catch (IOException e) {
-            Log.e(TAG, "Error extracting stream URL: " + e.getMessage());
+            Log.e(TAG, "IO Error extracting stream URL: " + e.getMessage());
             e.printStackTrace();
+            return fallback;
         } catch (Exception e) {
             Log.e(TAG, "Unexpected error: " + e.getMessage());
             e.printStackTrace();
+            return fallback;
+        }
+
+    }
+
+    /**
+     * Parse stream URL from API response
+     */
+    private static String parseStreamUrlFromResponse(String jsonResponse) {
+        if (jsonResponse == null || jsonResponse.isEmpty()) {
+            return null;
+        }
+
+        try {
+            // Remove any HTML tags if present
+            jsonResponse = jsonResponse.replaceAll("<[^>]*>", "").trim();
+
+            // Common JSON patterns to look for
+            String[] patterns = {
+                    "\"url\"\\s*:\\s*\"([^\"]+)\"",
+                    "\"link\"\\s*:\\s*\"([^\"]+)\"",
+                    "\"embed\"\\s*:\\s*\"([^\"]+)\"",
+                    "\"src\"\\s*:\\s*\"([^\"]+)\"",
+                    "\"file\"\\s*:\\s*\"([^\"]+)\"",
+                    "\"stream\"\\s*:\\s*\"([^\"]+)\"",
+                    "\"sources\"\\s*:\\s*\\[\\s*\"([^\"]+)\"",
+                    "\"m3u8\"\\s*:\\s*\"([^\"]+)\""
+            };
+
+            for (String pattern : patterns) {
+                java.util.regex.Pattern p = java.util.regex.Pattern.compile(pattern);
+                java.util.regex.Matcher m = p.matcher(jsonResponse);
+                if (m.find()) {
+                    String url = m.group(1);
+                    // Unescape JSON string
+                    url = url.replace("\\/", "/")
+                            .replace("\\\"", "\"")
+                            .replace("\\\\", "\\")
+                            .replace("\\n", "")
+                            .replace("\\r", "")
+                            .replace("\\t", "");
+
+                    // Validate URL
+                    if (url.startsWith("http") || url.startsWith("//")) {
+                        return url;
+                    }
+                }
+            }
+
+            Log.w(TAG, "No stream URL pattern matched in response");
+
+        } catch (Exception e) {
+            Log.e(TAG, "Error parsing stream URL: " + e.getMessage());
         }
 
         return null;
+    }
+
+
+
+    /**
+     * Extract stream URL with all available servers
+     */
+    public static String extractStreamUrl(String detailUrl, String movieId) {
+        // Try servers in order: 2, 1, 5 (as shown in the HTML)
+        List<ServerInfo> allservers=getAvailableServers( detailUrl);
+        Log.d(TAG, "Available servers: " + allservers);
+        List<ServerInfo> servers = allservers;
+
+        for (ServerInfo server : servers) {
+            Log.d(TAG, "Attempting server " + server);
+            String streamUrl = extractStreamUrl(detailUrl, movieId, server.serverNumber);
+            if (streamUrl != null && !streamUrl.isEmpty()) {
+                Log.d(TAG, "Successfully found stream on server " + server);
+                return streamUrl;
+            }
+        }
+
+        Log.w(TAG, "All servers failed, no stream URL found");
+        return null;
+    }
+
+    /**
+     * Overload for backward compatibility
+     */
+    public static String extractStreamUrl(String detailUrl) {
+        Log.d(TAG, "Using default extractStreamUrl method");
+        String movieId = "";
+        try {
+            Document doc = createConnection(detailUrl).get();
+            // Extract movie ID from data-mid attribute
+            Element midElement = doc.selectFirst("#mid[data-mid]");
+            if (midElement != null) {
+                movieId = midElement.attr("data-mid");
+                Log.d(TAG, "extractStreamUrl: "+movieId);
+
+            }
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        return extractStreamUrl(detailUrl, movieId);
+    }
+
+    /**
+     * Get available servers from the detail page
+     */
+    public static List<ServerInfo> getAvailableServers(String detailUrl) {
+        List<ServerInfo> servers = new ArrayList<>();
+
+        try {
+            Document doc = createConnection(detailUrl).get();
+
+            // Get movie ID
+            Element midElement = doc.selectFirst("#mid[data-mid]");
+            String movieId = midElement != null ? midElement.attr("data-mid") : null;
+
+            // Get server buttons
+            Elements serverButtons = doc.select("#srv-list button.server");
+
+            for (Element button : serverButtons) {
+                String serverId = button.attr("id");
+                String serverName = button.text().trim();
+
+                if (serverId.startsWith("srv-")) {
+                    try {
+                        int serverNum = Integer.parseInt(serverId.replace("srv-", ""));
+                        servers.add(new ServerInfo(serverNum, serverName, movieId));
+                    } catch (NumberFormatException e) {
+                        Log.w(TAG, "Could not parse server number from: " + serverId);
+                    }
+                }
+            }
+
+            Log.d(TAG, "Found " + servers.size() + " servers");
+
+        } catch (IOException e) {
+            Log.e(TAG, "Error getting available servers: " + e.getMessage());
+        }
+
+        return servers;
     }
 
     /**
@@ -490,5 +647,24 @@ public class FMoviesScraper {
     public static List<Movie> searchMovies(String query) {
         String searchUrl = BASE_URL + "/search?keyword=" + query.replace(" ", "+");
         return scrapeMoviesFromUrl(searchUrl);
+    }
+    /**
+     * Helper class to store server information
+     */
+    public static class ServerInfo {
+        public int serverNumber;
+        public String serverName;
+        public String movieId;
+
+        public ServerInfo(int serverNumber, String serverName, String movieId) {
+            this.serverNumber = serverNumber;
+            this.serverName = serverName;
+            this.movieId = movieId;
+        }
+
+        @Override
+        public String toString() {
+            return serverName + " (Server " + serverNumber + ")";
+        }
     }
 }
