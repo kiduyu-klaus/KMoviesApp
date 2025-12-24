@@ -24,6 +24,18 @@ import javax.net.ssl.SSLSocketFactory;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 public class FMoviesScraper {
     private static final String TAG = "FMoviesScraper";
     private static final String BASE_URL2 = "https://ww4.fmovies.co";
@@ -596,27 +608,313 @@ public class FMoviesScraper {
         return sources;
     }
 
-    public static String extractStreamUrl(String detailUrl) {
+    /**
+     * Result class to hold stream URL, all quality URLs, and subtitles
+     */
+    public static class StreamResult {
+        public String streamUrl; // Best quality URL
+        public Map<String, String> qualities; // All available qualities
+        public Map<String, String> subtitles; // All available subtitles
+
+        public StreamResult(String streamUrl, Map<String, String> qualities, Map<String, String> subtitles) {
+            this.streamUrl = streamUrl;
+            this.qualities = qualities;
+            this.subtitles = subtitles;
+        }
+    }
+
+    /**
+     * Extracts stream URL and subtitles from encrypted sources
+     * Returns the highest quality stream URL available
+     */
+    public static String extractStreamUrl(String tmdb_id) {
+        StreamResult result = extractStreamUrlWithSubtitles(tmdb_id);
+        return result != null ? result.streamUrl : null;
+    }
+
+    /**
+     * Extracts stream URL and subtitles from encrypted sources
+     * Returns StreamResult with best URL, all qualities, and subtitles
+     */
+    public static StreamResult extractStreamUrlWithSubtitles(String tmdb_id) {
+        final String API = "https://enc-dec.app/api";
+
         try {
-            Log.d(TAG, "Extracting stream URL from: " + detailUrl);
+            // Step 1: Get token data
+            String tokenUrl = API + "/enc-vidstack";
+            JSONObject tokenResponse = makeGetRequest(tokenUrl);
+            JSONObject tokenData = tokenResponse.getJSONObject("result");
+            String token = tokenData.getString("token");
+            String userId = tokenData.getString("user_id");
 
-            Document doc = createConnection(detailUrl).get();
-            List<Movie.StreamSource> sources = extractStreamSources(doc);
+            Log.d(TAG, "Got token: " + token.substring(0, 10) + "...");
 
-            if (!sources.isEmpty()) {
-                String streamUrl = sources.get(0).getUrl();
-                Log.d(TAG, "Found stream URL: " + streamUrl);
-                return streamUrl;
-            } else {
-                Log.w(TAG, "No stream sources found");
+            // Step 2: Get player data from videofsh (type 2)
+            String playerUrl = String.format(
+                    "https://api.smashystream.top/api/v1/videofsh/%s?token=%s&user_id=%s",
+                    tmdb_id, token, userId
+            );
+
+            JSONObject playerResponse = makeGetRequest(playerUrl);
+            JSONObject data = playerResponse.getJSONObject("data");
+            JSONArray sources = data.getJSONArray("sources");
+
+            if (sources.length() == 0) {
+                Log.e(TAG, "No sources found");
+                return null;
             }
 
-        } catch (IOException e) {
+            // Get encrypted file
+            String encryptedFile = sources.getJSONObject(0).getString("file");
+
+            // Get subtitles/tracks if available
+            String encryptedTracks = "";
+            if (data.has("tracks")) {
+                Object tracksObj = data.get("tracks");
+                if (tracksObj instanceof String) {
+                    encryptedTracks = (String) tracksObj;
+                } else if (tracksObj instanceof JSONArray) {
+                    encryptedTracks = tracksObj.toString();
+                }
+            }
+
+            Log.d(TAG, "Encrypted file length: " + encryptedFile.length());
+
+            // Step 3: Decrypt the file
+            String decryptUrl = API + "/dec-vidstack";
+            JSONObject decryptPayload = new JSONObject();
+            decryptPayload.put("text", encryptedFile);
+            decryptPayload.put("type", "2");
+
+            JSONObject decryptResponse = makePostRequest(decryptUrl, decryptPayload);
+            String decrypted = decryptResponse.getString("result");
+
+            Log.d(TAG, "Decrypted data: " + decrypted.substring(0, Math.min(100, decrypted.length())) + "...");
+
+            // Step 4: Parse the decrypted result
+            Map<String, String> parsedUrls = listParser(decrypted);
+
+            // Log available qualities
+            Log.d(TAG, "Available qualities: " + parsedUrls.keySet());
+
+            // Step 5: Decrypt subtitles if available
+            Map<String, String> subtitles = new HashMap<>();
+            if (!encryptedTracks.isEmpty()) {
+                try {
+                    JSONObject subtitlePayload = new JSONObject();
+                    subtitlePayload.put("text", encryptedTracks);
+                    subtitlePayload.put("type", "2");
+
+                    JSONObject subtitleResponse = makePostRequest(decryptUrl, subtitlePayload);
+                    String decryptedTracks = subtitleResponse.getString("result");
+                    subtitles = listParser(decryptedTracks);
+
+                    Log.d(TAG, "Found " + subtitles.size() + " subtitle tracks");
+                } catch (Exception e) {
+                    Log.e(TAG, "Error decrypting subtitles: " + e.getMessage());
+                }
+            }
+
+            // Step 6: Select best quality URL
+            // Priority: 1080p -> 720p -> 480p -> 360p -> default
+            String[] qualities = {"1080p", "720p", "480p", "360p", "1080", "720", "480", "360"};
+            String bestUrl = null;
+
+            for (String quality : qualities) {
+                if (parsedUrls.containsKey(quality)) {
+                    bestUrl = parsedUrls.get(quality);
+                    Log.d(TAG, "Selected stream quality: " + quality);
+                    Log.d(TAG, "Stream URL: " + bestUrl.substring(0, Math.min(80, bestUrl.length())) + "...");
+                    break;
+                }
+            }
+
+            // Fallback to default or first available
+            if (bestUrl == null) {
+                if (parsedUrls.containsKey("default") && !parsedUrls.get("default").isEmpty()) {
+                    bestUrl = parsedUrls.get("default");
+                    Log.d(TAG, "Using default quality");
+                } else if (!parsedUrls.isEmpty()) {
+                    String firstKey = parsedUrls.keySet().iterator().next();
+                    bestUrl = parsedUrls.get(firstKey);
+                    Log.d(TAG, "Using first available: " + firstKey);
+                }
+            }
+
+            if (bestUrl == null) {
+                Log.e(TAG, "No suitable stream URL found");
+                return null;
+            }
+
+            return new StreamResult(bestUrl, parsedUrls, subtitles);
+
+        } catch (Exception e) {
             Log.e(TAG, "Error extracting stream URL: " + e.getMessage());
             e.printStackTrace();
+            return null;
+        }
+    }
+
+    /**
+     * Parse list format string into quality -> URL map
+     * Handles formats:
+     * - "[1080p]url1, [720p]url2, [360p]url3"
+     * - "[Arabic]url1, [English]url2"
+     * - "url1 or url2"
+     * - "url1, url2"
+     */
+    private static Map<String, String> listParser(String text) {
+        Map<String, String> result = new HashMap<>();
+
+        if (text == null || text.isEmpty()) {
+            return result;
         }
 
-        return null;
+        // Clean up text
+        text = text.trim().replaceAll(",$", "").replace(" or ", ",");
+
+        // Split by comma
+        String[] items = text.split(",");
+
+        for (String item : items) {
+            item = item.trim();
+            if (item.isEmpty()) continue;
+
+            // Check if it has quality/language tag [xxx]url format
+            if (item.startsWith("[") && item.contains("]")) {
+                int closeBracket = item.indexOf("]");
+                String key = item.substring(1, closeBracket).trim();
+                String url = item.substring(closeBracket + 1).trim();
+
+                if (!url.isEmpty()) {
+                    result.put(key, url);
+                }
+            } else {
+                // No tag, add to default
+                String existing = result.get("default");
+                if (existing == null) {
+                    result.put("default", item);
+                } else {
+                    result.put("default", existing + "," + item);
+                }
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * Make HTTP GET request and return JSON response
+     */
+    private static JSONObject makeGetRequest(String urlString) throws Exception {
+        URL url = new URL(urlString);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setRequestMethod("GET");
+        conn.setRequestProperty("User-Agent",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36");
+        conn.setRequestProperty("Connection", "keep-alive");
+        conn.setConnectTimeout(TIMEOUT);
+        conn.setReadTimeout(TIMEOUT);
+
+        int responseCode = conn.getResponseCode();
+        if (responseCode != 200) {
+            throw new Exception("HTTP Error: " + responseCode);
+        }
+
+        BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+        StringBuilder response = new StringBuilder();
+        String line;
+
+        while ((line = in.readLine()) != null) {
+            response.append(line);
+        }
+        in.close();
+        conn.disconnect();
+
+        return new JSONObject(response.toString());
+    }
+
+    /**
+     * Make HTTP POST request with JSON body
+     */
+    private static JSONObject makePostRequest(String urlString, JSONObject payload) throws Exception {
+        URL url = new URL(urlString);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setRequestMethod("POST");
+        conn.setRequestProperty("Content-Type", "application/json");
+        conn.setRequestProperty("User-Agent",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36");
+        conn.setRequestProperty("Connection", "keep-alive");
+        conn.setDoOutput(true);
+        conn.setConnectTimeout(TIMEOUT);
+        conn.setReadTimeout(TIMEOUT);
+
+        // Write payload
+        OutputStream os = conn.getOutputStream();
+        os.write(payload.toString().getBytes("UTF-8"));
+        os.flush();
+        os.close();
+
+        int responseCode = conn.getResponseCode();
+        if (responseCode != 200) {
+            throw new Exception("HTTP Error: " + responseCode);
+        }
+
+        BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+        StringBuilder response = new StringBuilder();
+        String line;
+
+        while ((line = in.readLine()) != null) {
+            response.append(line);
+        }
+        in.close();
+        conn.disconnect();
+
+        return new JSONObject(response.toString());
+    }
+
+    /**
+     * Get all available stream qualities for a movie
+     */
+    public static Map<String, String> getAllStreamQualities(String tmdb_id) {
+        final String API = "https://enc-dec.app/api";
+
+        try {
+            String tokenUrl = API + "/enc-vidstack";
+            JSONObject tokenResponse = makeGetRequest(tokenUrl);
+            JSONObject tokenData = tokenResponse.getJSONObject("result");
+            String token = tokenData.getString("token");
+            String userId = tokenData.getString("user_id");
+
+            String playerUrl = String.format(
+                    "https://api.smashystream.top/api/v1/videofsh/%s?token=%s&user_id=%s",
+                    tmdb_id, token, userId
+            );
+
+            JSONObject playerResponse = makeGetRequest(playerUrl);
+            JSONObject data = playerResponse.getJSONObject("data");
+            JSONArray sources = data.getJSONArray("sources");
+
+            if (sources.length() == 0) {
+                return new HashMap<>();
+            }
+
+            String encryptedFile = sources.getJSONObject(0).getString("file");
+
+            String decryptUrl = API + "/dec-vidstack";
+            JSONObject decryptPayload = new JSONObject();
+            decryptPayload.put("text", encryptedFile);
+            decryptPayload.put("type", "2");
+
+            JSONObject decryptResponse = makePostRequest(decryptUrl, decryptPayload);
+            String decrypted = decryptResponse.getString("result");
+
+            return listParser(decrypted);
+
+        } catch (Exception e) {
+            Log.e(TAG, "Error getting stream qualities: " + e.getMessage());
+            return new HashMap<>();
+        }
     }
 
     public static List<Movie> searchMovies(String query) {
@@ -624,43 +922,7 @@ public class FMoviesScraper {
         return scrapeMoviesFromUrl(searchUrl);
     }
 
-    /**
 
-     * Helper class to store server information
-
-     */
-
-    public static class ServerInfo {
-
-        public int serverNumber;
-
-        public String serverName;
-
-        public String movieId;
-
-
-
-        public ServerInfo(int serverNumber, String serverName, String movieId) {
-
-            this.serverNumber = serverNumber;
-
-            this.serverName = serverName;
-
-            this.movieId = movieId;
-
-        }
-
-
-
-        @Override
-
-        public String toString() {
-
-            return serverName + " (Server " + serverNumber + ")";
-
-        }
-
-    }
 
 
 }

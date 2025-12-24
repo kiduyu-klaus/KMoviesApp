@@ -10,12 +10,13 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.annotation.OptIn;
 import androidx.fragment.app.FragmentActivity;
+import androidx.media3.common.util.UnstableApi;
 
 import com.bumptech.glide.Glide;
 import com.klaus.kmoviesapp.models.Movie;
 import com.klaus.kmoviesapp.scraper.MovieDetailTask;
-import com.klaus.kmoviesapp.scraper.StreamUrlTask;
 
 public class MovieDetailActivity extends FragmentActivity {
     private static final String TAG = "MovieDetailActivity";
@@ -58,12 +59,12 @@ public class MovieDetailActivity extends FragmentActivity {
         playButton = findViewById(R.id.playButton);
         progressBar = findViewById(R.id.progressBar);
 
-        playButton.setOnClickListener(v -> loadStreamUrl());
+        playButton.setOnClickListener(v -> playMovie());
     }
 
     private void loadMovieData() {
         movie = (Movie) getIntent().getSerializableExtra("movie");
-        
+
         if (movie == null) {
             Toast.makeText(this, "Error loading movie", Toast.LENGTH_SHORT).show();
             finish();
@@ -120,21 +121,21 @@ public class MovieDetailActivity extends FragmentActivity {
         // Load images
         if (movie.getThumbnailUrl() != null) {
             Glide.with(this)
-                .load(movie.getThumbnailUrl())
-                .placeholder(R.drawable.placeholder_movie)
-                .into(posterImageView);
+                    .load(movie.getThumbnailUrl())
+                    .placeholder(R.drawable.placeholder_movie)
+                    .into(posterImageView);
         }
 
         if (movie.getBackdropUrl() != null) {
             Glide.with(this)
-                .load(movie.getBackdropUrl())
-                .placeholder(R.drawable.placeholder_backdrop)
-                .into(backdropImageView);
+                    .load(movie.getBackdropUrl())
+                    .placeholder(R.drawable.placeholder_backdrop)
+                    .into(backdropImageView);
         } else if (movie.getThumbnailUrl() != null) {
             Glide.with(this)
-                .load(movie.getThumbnailUrl())
-                .placeholder(R.drawable.placeholder_backdrop)
-                .into(backdropImageView);
+                    .load(movie.getThumbnailUrl())
+                    .placeholder(R.drawable.placeholder_backdrop)
+                    .into(backdropImageView);
         }
     }
 
@@ -146,8 +147,12 @@ public class MovieDetailActivity extends FragmentActivity {
             public void onDetailLoaded(Movie detailedMovie) {
                 runOnUiThread(() -> {
                     progressBar.setVisibility(View.GONE);
-                    
+
                     // Update movie object with detailed info
+                    if (detailedMovie.getId() != null && !detailedMovie.getId().isEmpty()) {
+                        movie.setId(detailedMovie.getId());
+                        Log.d(TAG, "Updated TMDB ID: " + detailedMovie.getId());
+                    }
                     if (detailedMovie.getDescription() != null) {
                         movie.setDescription(detailedMovie.getDescription());
                     }
@@ -163,6 +168,9 @@ public class MovieDetailActivity extends FragmentActivity {
                     if (detailedMovie.getBackdropUrl() != null) {
                         movie.setBackdropUrl(detailedMovie.getBackdropUrl());
                     }
+                    if (detailedMovie.getActors() != null) {
+                        movie.setActors(detailedMovie.getActors());
+                    }
 
                     displayMovieInfo(movie);
                 });
@@ -173,50 +181,33 @@ public class MovieDetailActivity extends FragmentActivity {
                 runOnUiThread(() -> {
                     progressBar.setVisibility(View.GONE);
                     Log.e(TAG, "Error loading details: " + error);
+                    Toast.makeText(MovieDetailActivity.this,
+                            "Could not load full details", Toast.LENGTH_SHORT).show();
                 });
             }
         });
         task.execute(detailUrl);
     }
 
-    private void loadStreamUrl() {
-        if (movie.getDetailUrl() == null) {
-            Toast.makeText(this, "Stream URL not available", Toast.LENGTH_SHORT).show();
+    @OptIn(markerClass = UnstableApi.class)
+    private void playMovie() {
+        // Check if we have TMDB ID
+        if (movie.getId() == null || movie.getId().isEmpty()) {
+            Toast.makeText(this, "Movie ID not available. Please wait for details to load.",
+                    Toast.LENGTH_LONG).show();
+
+            // Try to load details again if we have the URL
+            if (movie.getDetailUrl() != null && !movie.getDetailUrl().isEmpty()) {
+                loadDetailedInfo(movie.getDetailUrl());
+            }
             return;
         }
 
-        playButton.setEnabled(false);
-        progressBar.setVisibility(View.VISIBLE);
+        Log.d(TAG, "Playing movie with TMDB ID: " + movie.getId());
 
-        StreamUrlTask task = new StreamUrlTask(new StreamUrlTask.StreamUrlCallback() {
-            @Override
-            public void onStreamUrlExtracted(String streamUrl) {
-                runOnUiThread(() -> {
-                    playButton.setEnabled(true);
-                    progressBar.setVisibility(View.GONE);
-                    
-                    movie.setStreamUrl(streamUrl);
-                    playMovie(streamUrl);
-                });
-            }
-
-            @Override
-            public void onStreamUrlError(String error) {
-                runOnUiThread(() -> {
-                    playButton.setEnabled(true);
-                    progressBar.setVisibility(View.GONE);
-                    playMovie("streamUrl");
-                    Toast.makeText(MovieDetailActivity.this, 
-                        "Unable to load stream: " + error, Toast.LENGTH_LONG).show();
-                });
-            }
-        });
-        task.execute(movie.getDetailUrl());
-    }
-
-    private void playMovie(String streamUrl) {
+        // Pass TMDB ID to PlayerActivity
         Intent intent = new Intent(this, PlayerActivity.class);
-        intent.putExtra("stream_url", streamUrl);
+        intent.putExtra("tmdb_id", movie.getId());
         intent.putExtra("movie_title", movie.getTitle());
         startActivity(intent);
     }

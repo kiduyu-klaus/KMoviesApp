@@ -12,7 +12,6 @@ import androidx.media3.common.PlaybackException;
 import androidx.media3.common.PlaybackParameters;
 import androidx.media3.common.Player;
 import androidx.media3.common.Timeline;
-import androidx.media3.common.TrackSelectionOverride;
 import androidx.media3.common.TrackSelectionParameters;
 import androidx.media3.common.Tracks;
 import androidx.media3.common.util.UnstableApi;
@@ -27,12 +26,19 @@ import androidx.media3.datasource.cache.CacheDataSource;
 import androidx.media3.datasource.cache.NoOpCacheEvictor;
 import androidx.media3.datasource.cache.SimpleCache;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.hls.HlsMediaSource;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
+import androidx.media3.exoplayer.source.MediaSource;
+import androidx.media3.exoplayer.source.ProgressiveMediaSource;
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter;
 import androidx.media3.ui.PlayerView;
 
 import java.io.File;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 @UnstableApi
 public class PlayerManager {
@@ -64,7 +70,8 @@ public class PlayerManager {
         // Configure track selector for adaptive streaming
         TrackSelectionParameters parameters = trackSelector.getParameters()
                 .buildUpon()
-                .setMaxVideoSizeSd() // Start with SD quality, can be changed
+                .setMaxVideoSizeSd()
+                .setPreferredTextLanguage("en") // Prefer English subtitles
                 .build();
         trackSelector.setParameters(parameters);
 
@@ -77,66 +84,134 @@ public class PlayerManager {
         }
 
         // Build cached data source factory
-        cacheDataSourceFactory = buildCachedDataSourceFactory();
+        cacheDataSourceFactory = buildCachedDataSourceFactory(null);
     }
 
     public void init(Context context, PlayerView playerView, String contentUrl) {
+        init(context, playerView, contentUrl, null, null);
+    }
+
+    public void init(Context context, PlayerView playerView, String contentUrl,
+                     Map<String, String> headers, List<SubtitleInfo> subtitles) {
         this.playerView = playerView;
 
         // Log the received URL for debugging
         Log.i(TAG, "Initializing player with URL: " + contentUrl);
-
-        boolean needNewPlayer = player == null;
-        if (needNewPlayer) {
-            // Create ExoPlayer instance with cache
-            player = new ExoPlayer.Builder(context)
-                    .setTrackSelector(trackSelector)
-                    .setBandwidthMeter(bandwidthMeter)
-                    .setMediaSourceFactory(new DefaultMediaSourceFactory(context)
-                            .setDataSourceFactory(cacheDataSourceFactory))
-                    .build();
-
-            // Add listener
-            player.addListener(new PlayerEventListener());
-
-            // Set play when ready
-            player.setPlayWhenReady(true);
-
-            // Bind the player to the view
-            playerView.setPlayer(player);
+        if (headers != null && !headers.isEmpty()) {
+            Log.i(TAG, "Headers: " + headers.toString());
+        }
+        if (subtitles != null && !subtitles.isEmpty()) {
+            Log.i(TAG, "Subtitles: " + subtitles.size() + " tracks");
         }
 
-        // Use provided URL or fallback to hardcoded one
+        // IMPORTANT: Always recreate player with new headers
+        if (player != null) {
+            contentPosition = player.getCurrentPosition();
+            player.release();
+            player = null;
+        }
+
+        // Create data source factory with headers if provided
+        DataSource.Factory dataSourceFactory = (headers != null && !headers.isEmpty()) ?
+                buildCachedDataSourceFactory(headers) : cacheDataSourceFactory;
+
+        // Create ExoPlayer instance with cache
+        player = new ExoPlayer.Builder(context)
+                .setTrackSelector(trackSelector)
+                .setBandwidthMeter(bandwidthMeter)
+                .setMediaSourceFactory(new DefaultMediaSourceFactory(context)
+                        .setDataSourceFactory(dataSourceFactory))
+                .build();
+
+        // Add listener
+        player.addListener(new PlayerEventListener());
+
+        // Set play when ready
+        player.setPlayWhenReady(true);
+
+        // Bind the player to the view
+        playerView.setPlayer(player);
+
         if (contentUrl == null || contentUrl.isEmpty()) {
-            Log.w(TAG, "No URL provided, using default MKV URL");
-            contentUrl = "https://test-videos.co.uk/vids/jellyfish/mkv/1080/Jellyfish_1080_10s_1MB.mkv";
+            Log.e(TAG, "Content URL is null or empty!");
+            return;
         }
-
-        // Validate URL format
-//        if (!contentUrl.startsWith("http://") && !contentUrl.startsWith("https://") && !contentUrl.startsWith("file://")) {
-//            Log.e(TAG, "Invalid URL format: " + contentUrl);
-//            // Try to fix common issues
-//            if (!contentUrl.contains("://")) {
-//                Log.e(TAG, "URL missing protocol, cannot play");
-//                return;
-//            }
-//        }
 
         Log.i(TAG, "Playing URL: " + contentUrl);
 
-        // Check if URL is MKV file
-        if (isMkvFile(contentUrl)) {
-            // Use ProgressiveMediaSource for MKV files
-            prepareMkvSource(contentUrl);
-        } else {
-            // Use default MediaItem for other formats
-            Log.i(TAG, "Using standard MediaItem for non-MKV file");
-            MediaItem mediaItem = MediaItem.fromUri(Uri.parse(contentUrl));
-            player.setMediaItem(mediaItem);
-        }
-
+        // Prepare media source based on file type
+        MediaSource mediaSource = prepareMediaSource(contentUrl, headers, subtitles);
+        player.setMediaSource(mediaSource);
         player.seekTo(contentPosition);
         player.prepare();
+    }
+
+    /**
+     * Prepare appropriate media source based on content type
+     */
+    private MediaSource prepareMediaSource(String contentUrl, Map<String, String> headers,
+                                           List<SubtitleInfo> subtitles) {
+        Uri uri = Uri.parse(contentUrl);
+
+        // Build MediaItem with subtitles if available
+        MediaItem.Builder mediaItemBuilder = new MediaItem.Builder().setUri(uri);
+
+        if (subtitles != null && !subtitles.isEmpty()) {
+            List<MediaItem.SubtitleConfiguration> subtitleConfigs = new ArrayList<>();
+
+            for (SubtitleInfo subtitle : subtitles) {
+                try {
+                    MediaItem.SubtitleConfiguration subtitleConfig =
+                            new MediaItem.SubtitleConfiguration.Builder(Uri.parse(subtitle.url))
+                                    .setMimeType(getMimeTypeForSubtitle(subtitle.type))
+                                    .setLanguage(subtitle.language)
+                                    .setLabel(subtitle.language)
+                                    .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                                    .build();
+                    subtitleConfigs.add(subtitleConfig);
+                    Log.d(TAG, "Added subtitle: " + subtitle.language);
+                } catch (Exception e) {
+                    Log.e(TAG, "Error adding subtitle: " + subtitle.language, e);
+                }
+            }
+
+            if (!subtitleConfigs.isEmpty()) {
+                mediaItemBuilder.setSubtitleConfigurations(subtitleConfigs);
+            }
+        }
+
+        MediaItem mediaItem = mediaItemBuilder.build();
+
+        // Create data source factory with headers if provided
+        DataSource.Factory dataSourceFactory = (headers != null && !headers.isEmpty()) ?
+                buildCachedDataSourceFactory(headers) : cacheDataSourceFactory;
+
+        if (isHlsFile(contentUrl)) {
+            Log.i(TAG, "Using HlsMediaSource for HLS stream");
+            return new HlsMediaSource.Factory(dataSourceFactory)
+                    .setAllowChunklessPreparation(true)
+                    .createMediaSource(mediaItem);
+        } else if (isMkvFile(contentUrl)) {
+            Log.i(TAG, "Using ProgressiveMediaSource for MKV file");
+            return new ProgressiveMediaSource.Factory(dataSourceFactory)
+                    .createMediaSource(mediaItem);
+        } else {
+            Log.i(TAG, "Using ProgressiveMediaSource for other formats");
+            return new ProgressiveMediaSource.Factory(dataSourceFactory)
+                    .createMediaSource(mediaItem);
+        }
+    }
+
+    /**
+     * Check if the URL points to an HLS file
+     */
+    private boolean isHlsFile(String url) {
+        if (url == null || url.isEmpty()) {
+            return false;
+        }
+        String lowerUrl = url.toLowerCase();
+        return lowerUrl.contains(".m3u8") || lowerUrl.contains("master.m3u8") ||
+                lowerUrl.contains("/hls/");
     }
 
     /**
@@ -150,23 +225,24 @@ public class PlayerManager {
     }
 
     /**
-     * Prepare MKV source using ProgressiveMediaSource
+     * Get MIME type for subtitle format
      */
-    private void prepareMkvSource(String contentUrl) {
-        if (contentUrl == null || contentUrl.isEmpty()) {
-            Log.e(TAG, "Cannot prepare MKV source: URL is null or empty");
-            return;
+    private String getMimeTypeForSubtitle(String type) {
+        if (type == null) {
+            return "text/vtt"; // Default
         }
 
-        Log.i(TAG, "Preparing MKV source for URL: " + contentUrl);
-
-        // Create ProgressiveMediaSource for MKV
-        androidx.media3.exoplayer.source.ProgressiveMediaSource mediaSource =
-                new androidx.media3.exoplayer.source.ProgressiveMediaSource.Factory(cacheDataSourceFactory)
-                        .createMediaSource(MediaItem.fromUri(Uri.parse(contentUrl)));
-
-        player.setMediaSource(mediaSource);
-        Log.i(TAG, "Using ProgressiveMediaSource for MKV file");
+        switch (type.toLowerCase()) {
+            case "srt":
+                return "application/x-subrip";
+            case "vtt":
+                return "text/vtt";
+            case "ass":
+            case "ssa":
+                return "text/x-ssa";
+            default:
+                return "text/vtt"; // Default to VTT
+        }
     }
 
     /**
@@ -221,6 +297,25 @@ public class PlayerManager {
         return currentQualityIndex;
     }
 
+    /**
+     * Get current playback position
+     */
+    public long getCurrentPosition() {
+        if (player != null) {
+            return player.getCurrentPosition();
+        }
+        return 0;
+    }
+
+    /**
+     * Seek to specific position
+     */
+    public void seekTo(long positionMs) {
+        if (player != null) {
+            player.seekTo(positionMs);
+        }
+    }
+
     public void pause() {
         if (player != null) {
             player.setPlayWhenReady(false);
@@ -273,13 +368,20 @@ public class PlayerManager {
     }
 
     /**
-     * Build cached data source factory
+     * Build cached data source factory with optional headers
      */
-    private DataSource.Factory buildCachedDataSourceFactory() {
+    private DataSource.Factory buildCachedDataSourceFactory(Map<String, String> headers) {
         DefaultHttpDataSource.Factory httpDataSourceFactory =
                 new DefaultHttpDataSource.Factory()
                         .setUserAgent(userAgent)
-                        .setTransferListener(bandwidthMeter);
+                        .setTransferListener(bandwidthMeter)
+                        .setAllowCrossProtocolRedirects(true);
+
+        // Add custom headers if provided
+        if (headers != null && !headers.isEmpty()) {
+            httpDataSourceFactory.setDefaultRequestProperties(headers);
+            Log.i(TAG, "Added headers to data source: " + headers.toString());
+        }
 
         DataSource.Factory upstreamFactory = new DefaultDataSource.Factory(
                 mContext,
@@ -319,6 +421,21 @@ public class PlayerManager {
         fileOrDirectory.delete();
     }
 
+    /**
+     * Subtitle information class
+     */
+    public static class SubtitleInfo {
+        public String url;
+        public String language;
+        public String type;
+
+        public SubtitleInfo(String url, String language, String type) {
+            this.url = url;
+            this.language = language;
+            this.type = type;
+        }
+    }
+
     private class PlayerEventListener implements Player.Listener {
 
         @Override
@@ -335,6 +452,15 @@ public class PlayerManager {
                     for (int i = 0; i < trackGroup.length; i++) {
                         if (trackGroup.isTrackSupported(i)) {
                             Log.i(TAG, "Video track available: " + trackGroup.getTrackFormat(i).height + "p");
+                        }
+                    }
+                }
+                // Log available subtitle tracks
+                if (trackGroup.getType() == C.TRACK_TYPE_TEXT) {
+                    for (int i = 0; i < trackGroup.length; i++) {
+                        if (trackGroup.isTrackSupported(i)) {
+                            String language = trackGroup.getTrackFormat(i).language;
+                            Log.i(TAG, "Subtitle track available: " + (language != null ? language : "unknown"));
                         }
                     }
                 }
@@ -377,6 +503,9 @@ public class PlayerManager {
         @Override
         public void onPlayerError(PlaybackException error) {
             Log.e(TAG, "onPlayerError: " + error.getMessage(), error);
+            if (error.getCause() != null) {
+                Log.e(TAG, "Error cause: " + error.getCause().getMessage());
+            }
         }
 
         @Override

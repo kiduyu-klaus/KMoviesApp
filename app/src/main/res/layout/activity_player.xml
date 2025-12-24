@@ -10,10 +10,11 @@
         android:id="@+id/playerView"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        app:resize_mode="fit"
         app:show_buffering="when_playing"
+        app:show_subtitle_button="true"
+        app:controller_layout_id="@layout/custom_player_controls"
         app:use_controller="true"
-        app:controller_layout_id="@layout/custom_player_controls" />
+        app:resize_mode="fit" />
 
     <!-- Loading Indicator -->
     <ProgressBar
@@ -21,16 +22,54 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_centerInParent="true"
+        android:indeterminateTint="@android:color/white"
         android:visibility="gone" />
 
-    <!-- Title Overlay -->
+    <!-- Error Container -->
+    <LinearLayout
+        android:id="@+id/errorContainer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:padding="24dp"
+        android:visibility="gone"
+        android:background="@android:color/black">
+
+        <ImageView
+            android:layout_width="64dp"
+            android:layout_height="64dp"
+            android:src="@android:drawable/ic_dialog_alert"
+            android:layout_marginBottom="16dp"
+            app:tint="@android:color/white" />
+
+        <TextView
+            android:id="@+id/errorText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Unable to load stream"
+            android:textColor="@android:color/white"
+            android:textSize="18sp"
+            android:gravity="center"
+            android:layout_marginBottom="16dp" />
+
+        <Button
+            android:id="@+id/retryButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Retry"
+            android:onClick="loadStreamData" />
+
+    </LinearLayout>
+
+    <!-- Top Control Bar -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_alignParentTop="true"
         android:orientation="horizontal"
         android:padding="16dp"
-        android:background="@drawable/gradient_top">
+        android:background="@drawable/gradient_top"
+        android:gravity="center_vertical">
 
         <TextView
             android:id="@+id/playerTitle"
@@ -40,18 +79,18 @@
             android:textColor="@android:color/white"
             android:textSize="18sp"
             android:textStyle="bold"
-            android:maxLines="2"
+            android:maxLines="1"
             android:ellipsize="end" />
 
         <ImageButton
             android:id="@+id/qualityButton"
             android:layout_width="48dp"
             android:layout_height="48dp"
-            android:layout_marginStart="8dp"
+            android:src="@android:drawable/ic_menu_sort_by_size"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:src="@drawable/ic_quality"
             android:contentDescription="Quality Settings"
-            android:tint="@android:color/white" />
+            app:tint="@android:color/white" />
+
     </LinearLayout>
 
 </RelativeLayout>
