@@ -362,6 +362,10 @@ public class FMoviesScraper {
         }
     }
 
+    /**
+     * Scrape detailed information for a specific movie from popcornmovies.org
+     * Updated to match the new HTML structure
+     */
     public static Movie scrapeMovieDetails(String detailUrl) {
         Movie movie = new Movie();
 
@@ -369,144 +373,249 @@ public class FMoviesScraper {
             Log.d(TAG, "Scraping details: " + detailUrl);
             Document doc = createConnection(detailUrl).get();
 
-            // Extract movie ID
-            Element midElement = doc.selectFirst("#mid[data-mid]");
-            if (midElement != null) {
-                movie.setId(midElement.attr("data-mid"));
-                String mode = midElement.attr("data-mode");
-                if (!mode.isEmpty()) {
-                    movie.setType(mode);
+            // Extract TMDB ID from the video sources section
+            Element videoSection = doc.selectFirst("div[wire\\:snapshot]");
+            if (videoSection != null) {
+                String wireSnapshot = videoSection.attr("wire:snapshot");
+                if (wireSnapshot.contains("tmdbId")) {
+                    Pattern tmdbPattern = Pattern.compile("\"tmdbId\"\\s*:\\s*\"(\\d+)\"");
+                    Matcher matcher = tmdbPattern.matcher(wireSnapshot);
+                    if (matcher.find()) {
+                        movie.setId(matcher.group(1));
+                    }
                 }
             }
 
-            // Extract title
-            Element titleElement = doc.selectFirst("h1.card-title");
-            if (titleElement != null) {
-                movie.setTitle(titleElement.text().trim());
+            // Extract title from h1 or h2
+            Element titleH1 = doc.selectFirst("h1.text-3xl");
+            Element titleH2 = doc.selectFirst("h2.text-lg");
+            Element titleH3 = doc.selectFirst("h3.text-xl");
+
+            if (titleH1 != null) {
+                movie.setTitle(titleH1.text().trim());
+            } else if (titleH3 != null) {
+                movie.setTitle(titleH3.text().trim());
+            } else if (titleH2 != null) {
+                movie.setTitle(titleH2.text().trim());
             }
 
-            // Extract description
-            Element descElement = doc.selectFirst("div.fst-italic p");
+            // Extract quality badge
+            Element qualityElement = doc.selectFirst("span.bg-gray-500\\/50");
+            if (qualityElement != null) {
+                movie.setQuality(qualityElement.text().trim());
+            }
+
+            // Extract duration, year, and other metadata from the info section
+            Elements infoSpans = doc.select("div.flex.items-center.text-gray-400 span");
+            for (Element span : infoSpans) {
+                String text = span.text().trim();
+
+                // Check if it's a year (4 digits)
+                if (text.matches("\\d{4}")) {
+                    movie.setYear(text);
+                }
+                // Check if it's duration (contains "min")
+                else if (text.contains("min")) {
+                    movie.setDuration(text);
+                }
+                // Check if it's quality (HD, 4K, etc.)
+                else if (text.matches("(HD|4K|CAM|TS)")) {
+                    movie.setQuality(text);
+                }
+            }
+
+            // Extract rating from circular progress
+            Element ratingElement = doc.selectFirst("div.flex.relative span.text-xs");
+            if (ratingElement != null) {
+                String rating = ratingElement.text().trim();
+                if (!rating.equals("0.0") && !rating.isEmpty()) {
+                    movie.setRating(rating);
+                }
+            }
+
+            // Extract description/plot
+            Element descElement = doc.selectFirst("p.text-gray-400.mt-3");
             if (descElement != null) {
                 movie.setDescription(descElement.text().trim());
             }
 
-            // Extract metadata
-            Element cardBody = doc.selectFirst("div.card-body");
-            if (cardBody != null) {
-                // Genre
-                Element genreElement = cardBody.selectFirst("p:has(strong:contains(Genre:))");
-                if (genreElement != null) {
-                    Elements genreLinks = genreElement.select("a");
-                    StringBuilder genres = new StringBuilder();
-                    for (Element link : genreLinks) {
-                        if (genres.length() > 0) genres.append(", ");
-                        genres.append(link.text().trim());
-                    }
-                    movie.setGenre(genres.toString());
-                }
+            // Extract metadata from the structured section
+            Elements metadataRows = doc.select("div.my-6.space-y-2 > div.grid");
 
-                // Actors
-                Element actorElement = cardBody.selectFirst("p:has(strong:contains(Actor:))");
-                if (actorElement != null) {
-                    Elements actorLinks = actorElement.select("a");
-                    StringBuilder actors = new StringBuilder();
-                    for (Element link : actorLinks) {
-                        if (actors.length() > 0) actors.append(", ");
-                        actors.append(link.text().trim());
-                    }
-                    movie.setActors(actors.toString());
-                }
+            for (Element row : metadataRows) {
+                Element label = row.selectFirst("div.text-gray-500");
+                Element value = row.selectFirst("div.font-medium");
 
-                // Director
-                Element directorElement = cardBody.selectFirst("p:has(strong:contains(Director:))");
-                if (directorElement != null) {
-                    String directorText = directorElement.text().replace("Director:", "").trim();
-                    movie.setDirector(directorText);
-                }
+                if (label != null && value != null) {
+                    String labelText = label.text().trim().toLowerCase();
 
-                // Country
-                Element countryElement = cardBody.selectFirst("p:has(strong:contains(Country:))");
-                if (countryElement != null) {
-                    Element countryLink = countryElement.selectFirst("a");
-                    if (countryLink != null) {
-                        movie.setCountry(countryLink.text().trim());
-                    }
-                }
+                    switch (labelText) {
+                        case "country":
+                            Element countryLink = value.selectFirst("a");
+                            if (countryLink != null) {
+                                movie.setCountry(countryLink.text().trim());
+                            }
+                            break;
 
-                // Duration
-                Element durationElement = cardBody.selectFirst("p:has(strong:contains(Duration:))");
-                if (durationElement != null) {
-                    String durationText = durationElement.text().replace("Duration:", "").trim();
-                    movie.setDuration(durationText);
-                }
+                        case "genre":
+                            Elements genreLinks = value.select("a");
+                            StringBuilder genres = new StringBuilder();
+                            for (Element link : genreLinks) {
+                                if (genres.length() > 0) genres.append(", ");
+                                genres.append(link.text().trim());
+                            }
+                            if (genres.length() > 0) {
+                                movie.setGenre(genres.toString());
+                            }
+                            break;
 
-                // Quality
-                Element qualityElement = cardBody.selectFirst("p:has(strong:contains(Quality:)) span.badge");
-                if (qualityElement != null) {
-                    movie.setQuality(qualityElement.text().trim());
-                }
+                        case "released":
+                            String releaseDate = value.text().trim();
+                            // Extract year from release date (e.g., "24 Dec, 2025" -> "2025")
+                            Pattern yearPattern = Pattern.compile("\\d{4}");
+                            Matcher yearMatcher = yearPattern.matcher(releaseDate);
+                            if (yearMatcher.find()) {
+                                movie.setYear(yearMatcher.group());
+                            }
+                            break;
 
-                // Year
-                Element releaseElement = cardBody.selectFirst("p:has(strong:contains(Release:))");
-                if (releaseElement != null) {
-                    Element releaseLink = releaseElement.selectFirst("a");
-                    if (releaseLink != null) {
-                        movie.setYear(releaseLink.text().trim());
-                    }
-                }
-
-                // Rating
-                Element imdbElement = cardBody.selectFirst("p:has(strong:contains(IMDb:))");
-                if (imdbElement != null) {
-                    String ratingText = imdbElement.text().replace("IMDb:", "").trim();
-                    if (!ratingText.equals("-") && !ratingText.isEmpty()) {
-                        movie.setRating(ratingText);
+                        case "cast":
+                            Elements castLinks = value.select("a");
+                            StringBuilder actors = new StringBuilder();
+                            for (Element link : castLinks) {
+                                if (actors.length() > 0) actors.append(", ");
+                                actors.append(link.text().trim());
+                            }
+                            if (actors.length() > 0) {
+                                movie.setActors(actors.toString());
+                            }
+                            break;
                     }
                 }
             }
 
-            // Keywords
-            Element keywordsElement = doc.selectFirst("div.card-footer");
-            if (keywordsElement != null) {
-                String keywordsText = keywordsElement.text().replace("Keywords:", "").trim();
-                if (!keywordsText.equals("-") && !keywordsText.isEmpty()) {
-                    movie.setKeywords(keywordsText);
-                }
+            // Extract keywords/tags
+            Elements tagLinks = doc.select("div.flex.flex-wrap.gap-2 a");
+            StringBuilder keywords = new StringBuilder();
+            for (Element tag : tagLinks) {
+                if (keywords.length() > 0) keywords.append(", ");
+                keywords.append(tag.text().trim());
+            }
+            if (keywords.length() > 0) {
+                movie.setKeywords(keywords.toString());
             }
 
-            // Poster
-            Element posterElement = doc.selectFirst("div.col-lg-2 img");
+            // Extract poster/thumbnail
+            Element posterElement = doc.selectFirst("div.aspect-\\[2\\/3\\] img");
             if (posterElement != null) {
-                String posterUrl = posterElement.attr("data-src");
+                String posterUrl = posterElement.attr("src");
                 if (posterUrl.isEmpty()) {
-                    posterUrl = posterElement.attr("src");
+                    posterUrl = posterElement.attr("data-src");
                 }
                 movie.setThumbnailUrl(posterUrl);
             }
 
-            // Backdrop
-            Element coverElement = doc.selectFirst("#cover-img");
-            if (coverElement != null) {
-                String backdropUrl = coverElement.attr("data-src");
-                if (backdropUrl.isEmpty()) {
-                    backdropUrl = coverElement.attr("src");
+            // Extract backdrop/cover from wire:snapshot data
+            if (videoSection != null) {
+                String wireSnapshot = videoSection.attr("wire:snapshot");
+                if (wireSnapshot.contains("cover")) {
+                    Pattern coverPattern = Pattern.compile("\"cover\"\\s*:\\s*\"([^\"]+)\"");
+                    Matcher matcher = coverPattern.matcher(wireSnapshot);
+                    if (matcher.find()) {
+                        String coverUrl = matcher.group(1).replace("\\/", "/");
+                        movie.setBackdropUrl(coverUrl);
+                    }
                 }
-                movie.setBackdropUrl(backdropUrl);
+            }
+
+            // Extract stream sources
+            List<Movie.StreamSource> sources = extractStreamSources(doc);
+            movie.setStreamSources(sources);
+            if (!sources.isEmpty()) {
+                movie.setStreamUrl(sources.get(0).getUrl());
             }
 
             movie.setDetailUrl(detailUrl);
-            Log.d(TAG, "Scraped: " + movie.getTitle());
+
+            if (movie.getType() == null || movie.getType().isEmpty()) {
+                if (detailUrl.contains("/tv-show/")) {
+                    movie.setType("tv");
+                } else if (detailUrl.contains("/movie/")) {
+                    movie.setType("movie");
+                }
+            }
+
+            Log.d(TAG, "Scraped: " + movie.getTitle() + " - " + sources.size() + " sources");
+
+
 
         } catch (IOException e) {
             Log.e(TAG, "Error scraping details: " + e.getMessage());
+            e.printStackTrace();
+        } catch (Exception e) {
+            Log.e(TAG, "Unexpected error: " + e.getMessage());
+            e.printStackTrace();
         }
 
         return movie;
     }
 
+    /**
+     * Extract all stream sources from detail page
+     */
+    private static List<Movie.StreamSource> extractStreamSources(Document doc) {
+        List<Movie.StreamSource> sources = new ArrayList<>();
+
+        try {
+            Elements serverButtons = doc.select("ul.inline-flex button");
+
+            int index = 0;
+            for (Element button : serverButtons) {
+                Element nameSpan = button.selectFirst("span");
+                String serverName = nameSpan != null ? nameSpan.text().trim() : "Server " + index;
+
+                String onClick = button.attr("x-on:click");
+                if (!onClick.isEmpty()) {
+                    Pattern urlPattern = Pattern.compile("play\\('([^']+)'");
+                    Matcher matcher = urlPattern.matcher(onClick);
+                    if (matcher.find()) {
+                        String url = matcher.group(1);
+                        sources.add(new Movie.StreamSource(serverName, url, index));
+                    }
+                }
+
+                index++;
+            }
+
+            Log.d(TAG, "Found " + sources.size() + " stream sources");
+
+        } catch (Exception e) {
+            Log.e(TAG, "Error extracting stream sources: " + e.getMessage());
+        }
+
+        return sources;
+    }
+
     public static String extractStreamUrl(String detailUrl) {
-        // Implement stream extraction based on the new site structure
+        try {
+            Log.d(TAG, "Extracting stream URL from: " + detailUrl);
+
+            Document doc = createConnection(detailUrl).get();
+            List<Movie.StreamSource> sources = extractStreamSources(doc);
+
+            if (!sources.isEmpty()) {
+                String streamUrl = sources.get(0).getUrl();
+                Log.d(TAG, "Found stream URL: " + streamUrl);
+                return streamUrl;
+            } else {
+                Log.w(TAG, "No stream sources found");
+            }
+
+        } catch (IOException e) {
+            Log.e(TAG, "Error extracting stream URL: " + e.getMessage());
+            e.printStackTrace();
+        }
+
         return null;
     }
 
@@ -514,5 +623,44 @@ public class FMoviesScraper {
         String searchUrl = BASE_URL + "/search?keyword=" + query.replace(" ", "+");
         return scrapeMoviesFromUrl(searchUrl);
     }
+
+    /**
+
+     * Helper class to store server information
+
+     */
+
+    public static class ServerInfo {
+
+        public int serverNumber;
+
+        public String serverName;
+
+        public String movieId;
+
+
+
+        public ServerInfo(int serverNumber, String serverName, String movieId) {
+
+            this.serverNumber = serverNumber;
+
+            this.serverName = serverName;
+
+            this.movieId = movieId;
+
+        }
+
+
+
+        @Override
+
+        public String toString() {
+
+            return serverName + " (Server " + serverNumber + ")";
+
+        }
+
+    }
+
 
 }
