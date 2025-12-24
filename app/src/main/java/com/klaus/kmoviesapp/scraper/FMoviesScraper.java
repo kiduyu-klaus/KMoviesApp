@@ -139,7 +139,7 @@ public class FMoviesScraper {
             Document doc = createConnection(url).get();
 
             // Find movie cards in grid - updated selector for new structure
-            Elements movieCards = doc.select("div.aspect-poster.group.relative");
+            Elements movieCards = doc.select("div.relative.group.overflow-hidden");
 
             Log.d(TAG, "Found " + movieCards.size() + " movie cards");
 
