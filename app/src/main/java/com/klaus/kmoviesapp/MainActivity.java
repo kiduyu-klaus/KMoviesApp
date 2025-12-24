@@ -61,7 +61,7 @@ public class MainActivity extends FragmentActivity {
 
         // Setup top week RecyclerView
         topWeekRecyclerView.setLayoutManager(
-                new LinearLayoutManager(this, LinearLayoutManager.VERTICAL, false)
+                new LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
         );
         topWeekMovies = new ArrayList<>();
         topWeekAdapter = new TopWeekAdapter(this, topWeekMovies, movie -> openMovieDetails(movie));
