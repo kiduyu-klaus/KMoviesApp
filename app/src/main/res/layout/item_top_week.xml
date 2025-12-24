@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:padding="8dp"
+    android:gravity="center_vertical"
+    android:focusable="true"
+    android:clickable="true"
+    android:background="@drawable/gradieant_top_week">
+
+    <!-- Thumbnail -->
+    <ImageView
+        android:id="@+id/topWeekThumbnail"
+        android:layout_width="64dp"
+        android:layout_height="96dp"
+        android:scaleType="centerCrop"
+        android:contentDescription="@string/movie_poster"
+        android:background="@color/background_dark" />
+
+    <!-- Content Container -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp">
+
+        <!-- Year -->
+        <TextView
+            android:id="@+id/topWeekYear"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="12sp"
+            android:textColor="@color/text_secondary"
+            android:layout_marginBottom="2dp" />
+
+        <!-- Title -->
+        <TextView
+            android:id="@+id/topWeekTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="14sp"
+            android:textColor="@color/text_primary"
+            android:textStyle="bold"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:layout_marginBottom="8dp" />
+
+        <!-- Genre and Type Container -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <!-- Genre -->
+            <TextView
+                android:id="@+id/topWeekGenre"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="12sp"
+                android:textColor="@color/text_secondary"
+                android:layout_marginEnd="8dp" />
+
+            <!-- Type Badge -->
+            <TextView
+                android:id="@+id/topWeekType"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="10sp"
+                android:textColor="@color/text_primary"
+                android:background="@drawable/badge_background"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:paddingTop="2dp"
+                android:paddingBottom="2dp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Rating Container -->
+    <RelativeLayout
+        android:id="@+id/topWeekRatingContainer"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:layout_marginEnd="16dp">
+
+        <!-- Rating Circle Background -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@drawable/rating_circle_background" />
+
+        <!-- Rating Text -->
+        <TextView
+            android:id="@+id/topWeekRating"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_centerInParent="true"
+            android:textSize="12sp"
+            android:textColor="@color/text_primary"
+            android:textStyle="bold" />
+    </RelativeLayout>
+
+</LinearLayout>

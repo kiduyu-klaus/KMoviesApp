@@ -28,14 +28,88 @@
         android:paddingStart="0dp"
         android:paddingEnd="16dp" />
 
-    <!-- Movies Grid -->
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/moviesRecyclerView"
+    <!-- Content ScrollView -->
+    <ScrollView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_below="@id/categoryRecyclerView"
-        android:clipToPadding="false"
-        android:paddingBottom="16dp" />
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <!-- Top This Week Section -->
+            <LinearLayout
+                android:id="@+id/topWeekSection"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginBottom="24dp"
+                android:padding="16dp"
+                android:background="@drawable/section_background">
+
+                <!-- Section Header -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="16dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="🔥"
+                        android:textSize="24sp"
+                        android:layout_marginEnd="8dp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Top This Week"
+                        android:textSize="20sp"
+                        android:textColor="@color/text_primary"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <!-- Top Week RecyclerView -->
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/topWeekRecyclerView"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:nestedScrollingEnabled="false"
+                    android:visibility="gone" />
+            </LinearLayout>
+
+            <!-- Movies Section -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="All Content"
+                    android:textSize="20sp"
+                    android:textColor="@color/text_primary"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="16dp" />
+
+                <!-- Movies Grid -->
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/moviesRecyclerView"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:clipToPadding="false"
+                    android:paddingBottom="16dp"
+                    android:nestedScrollingEnabled="false" />
+            </LinearLayout>
+
+        </LinearLayout>
+    </ScrollView>
 
     <!-- Loading Indicator -->
     <ProgressBar

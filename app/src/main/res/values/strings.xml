@@ -45,6 +45,7 @@
 
     <string name="pref_key_back">back_to_main</string>
     <string name="pref_title_back">Back to Main</string>
+    <string name="movie_poster">movie poster</string>
 
     <!-- Quality Arrays -->
     <string-array name="quality_entries">
