@@ -15,7 +15,7 @@ import java.util.List;
 
 public class FMoviesScraper {
     private static final String TAG = "FMoviesScraper";
-    private static final String BASE_URL = "https://en.fmovies24-to.com";
+    private static final String BASE_URL = "https://moviesjoy.is";
     private static final int TIMEOUT = 10000; // 10 seconds
 
     /**
