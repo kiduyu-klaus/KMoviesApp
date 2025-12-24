@@ -48,10 +48,13 @@
         <!-- Player Activity -->
         <activity
             android:name=".PlayerActivity"
-            android:configChanges="keyboard|keyboardHidden|orientation|screenSize"
-            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden"
             android:screenOrientation="landscape"
-            android:theme="@style/Theme.Leanback" />
+            android:supportsPictureInPicture="false"
+            android:theme="@style/Theme.AppCompat.NoActionBar"
+            android:exported="false">
+            <!-- Disable PiP explicitly -->
+        </activity>
 
         <!-- Browse Activity for Categories -->
         <activity

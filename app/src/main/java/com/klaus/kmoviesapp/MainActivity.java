@@ -56,7 +56,8 @@ public class MainActivity extends FragmentActivity {
 
         // Setup movies RecyclerView
         moviesRecyclerView.setLayoutManager(
-            new GridLayoutManager(this, 4)
+           //new GridLayoutManager(this, 4)
+                new LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
         );
 
         currentMovies = new ArrayList<>();

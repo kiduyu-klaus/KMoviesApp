@@ -8,7 +8,7 @@ android {
 
     defaultConfig {
         applicationId "com.klaus.kmoviesapp"
-        minSdk 21
+        minSdk 23
         targetSdk 35
         versionCode 1
         versionName "1.0"
@@ -44,13 +44,12 @@ dependencies {
     
     // Material Design
     implementation 'com.google.android.material:material:1.11.0'
-    
-    // ExoPlayer for video streaming
-    implementation 'androidx.media3:media3-exoplayer:1.2.0'
-    implementation 'androidx.media3:media3-exoplayer-dash:1.2.0'
-    implementation 'androidx.media3:media3-exoplayer-hls:1.2.0'
-    implementation 'androidx.media3:media3-ui:1.2.0'
-    
+
+    implementation "androidx.media3:media3-exoplayer:1.9.0"
+    implementation "androidx.media3:media3-exoplayer-dash:1.9.0"
+    implementation "androidx.media3:media3-ui:1.9.0"
+    implementation("androidx.media3:media3-ui-compose:1.9.0")
+
     // Jsoup for web scraping
     implementation 'org.jsoup:jsoup:1.21.2'
     
@@ -78,5 +77,11 @@ dependencies {
 
     // You likely need the standard preference library as well
     implementation 'androidx.preference:preference:1.2.1'
+
+    // Database for cache
+    implementation "androidx.media3:media3-database:1.2.0"
+
+    // DataSource for caching
+    implementation "androidx.media3:media3-datasource:1.2.0"
 
 }

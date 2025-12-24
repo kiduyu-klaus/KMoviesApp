@@ -27,6 +27,7 @@ import javax.net.ssl.X509TrustManager;
 public class FMoviesScraper {
     private static final String TAG = "FMoviesScraper";
     private static final String BASE_URL = "https://ww4.fmovies.co";
+    private static final String BASE_URL2 = "https://popcornmovies.org";
     private static final int TIMEOUT = 10000; // 10 seconds
 
     private static SSLContext socketFactory;
@@ -109,7 +110,7 @@ public class FMoviesScraper {
      * Scrape TV shows page
      */
     public static List<Movie> scrapeTVShows() {
-        return scrapeMoviesFromUrl(BASE_URL + "/tv");
+        return scrapeMoviesFromUrl(BASE_URL + "/tv-series");
     }
 
     /**
@@ -436,15 +437,12 @@ public class FMoviesScraper {
 
 
     /**
-     * Extract streaming URL from movie page using the site's AJAX API
-     * Based on the actual implementation from the site's JavaScript
+     * Extract streaming URL from the embed player response
      */
     public static String extractStreamUrl(String detailUrl, String movieId, int serverNumber) {
-        String fallback="https://netusa.xyz/watch/?v21#ZERDYTBCbGh4K1NkVzh3ZHR6d25XM0dDOEhSVndHL01rTFk1UjR3MFRmNE1wOUQ4SlRNUGZENGVXdFdUZGFMZDduM3VTQjJOdm13PQ";
         try {
             Log.d(TAG, "Extracting stream URL from: " + detailUrl);
 
-            // Base64 encoded player URL: "aHR0cHM6Ly9uZXR1c2EueHl6"
             String plyURL = "https://netusa.xyz";
 
             if (movieId == null || movieId.isEmpty()) {
@@ -455,16 +453,14 @@ public class FMoviesScraper {
                     Log.d(TAG, "Extracted movie ID: " + movieId);
                 } else {
                     Log.e(TAG, "Could not find movie ID");
-                    return fallback;
+                    return null;
                 }
             }
 
-            // Build the request body JSON - matches the JavaScript implementation
-            // fetchMoviesJSON uses: {"mid": "movie_id", "srv": "server_number"}
+            // Build the request body JSON
             String requestBody = String.format("{\"mid\":\"%s\",\"srv\":\"%d\"}", movieId, serverNumber);
 
             Log.d(TAG, "Requesting stream with server " + serverNumber);
-            Log.d(TAG, "Request body: " + requestBody);
 
             // Make POST request to the player API
             Connection.Response response = Jsoup.connect(plyURL)
@@ -481,51 +477,54 @@ public class FMoviesScraper {
             String responseBody = response.body();
             Log.d(TAG, "API Response: " + responseBody);
 
-            // Parse the JSON response to extract the stream URL
-            String streamUrl = parseStreamUrlFromResponse(responseBody);
+            // Parse the embed URL from response
+            String embedUrl = parseEmbedUrlFromResponse(responseBody);
 
-            if (streamUrl != null && !streamUrl.isEmpty()) {
-                Log.d(TAG, "Successfully extracted stream URL: " + streamUrl);
-                return streamUrl;
-            } else {
-                Log.w(TAG, "No stream URL found in response for server " + serverNumber);
-                return fallback;
+            if (embedUrl != null && !embedUrl.isEmpty()) {
+                Log.d(TAG, "Got embed URL: " + embedUrl);
+
+                // If it's a watch URL with hash, decode it to get actual stream URL
+                if (embedUrl.contains("/watch/") && embedUrl.contains("#")) {
+                    return decodeWatchUrl(embedUrl);
+                }
+
+                return decodeWatchUrl("https://netusa.xyz/watch/?v21#ZERDYTBCbGh4K1NkVzh3ZHR6d25XM0dDOEhSVndHL01rTFk1UjR3MFRmNE1wOUQ4SlRNUGZENGVXdFdUZGFMZDduM3VTQjJOdm13PQ");
             }
 
         } catch (IOException e) {
-            Log.e(TAG, "IO Error extracting stream URL: " + e.getMessage());
+            Log.e(TAG, "IO Error: " + e.getMessage());
             e.printStackTrace();
-            return fallback;
+            return decodeWatchUrl("https://netusa.xyz/watch/?v21#ZERDYTBCbGh4K1NkVzh3ZHR6d25XM0dDOEhSVndHL01rTFk1UjR3MFRmNE1wOUQ4SlRNUGZENGVXdFdUZGFMZDduM3VTQjJOdm13PQ");
         } catch (Exception e) {
             Log.e(TAG, "Unexpected error: " + e.getMessage());
             e.printStackTrace();
-            return fallback;
+            return decodeWatchUrl("https://netusa.xyz/watch/?v21#ZERDYTBCbGh4K1NkVzh3ZHR6d25XM0dDOEhSVndHL01rTFk1UjR3MFRmNE1wOUQ4SlRNUGZENGVXdFdUZGFMZDduM3VTQjJOdm13PQ");
         }
 
+        //return null;
+        return decodeWatchUrl("https://netusa.xyz/watch/?v21#ZERDYTBCbGh4K1NkVzh3ZHR6d25XM0dDOEhSVndHL01rTFk1UjR3MFRmNE1wOUQ4SlRNUGZENGVXdFdUZGFMZDduM3VTQjJOdm13PQ");
     }
 
+
+
     /**
-     * Parse stream URL from API response
+     * Parse embed URL from API response
      */
-    private static String parseStreamUrlFromResponse(String jsonResponse) {
+    private static String parseEmbedUrlFromResponse(String jsonResponse) {
         if (jsonResponse == null || jsonResponse.isEmpty()) {
             return null;
         }
 
         try {
-            // Remove any HTML tags if present
-            jsonResponse = jsonResponse.replaceAll("<[^>]*>", "").trim();
+            jsonResponse = jsonResponse.trim();
 
-            // Common JSON patterns to look for
+            // Try to parse as JSON
             String[] patterns = {
                     "\"url\"\\s*:\\s*\"([^\"]+)\"",
                     "\"link\"\\s*:\\s*\"([^\"]+)\"",
                     "\"embed\"\\s*:\\s*\"([^\"]+)\"",
                     "\"src\"\\s*:\\s*\"([^\"]+)\"",
-                    "\"file\"\\s*:\\s*\"([^\"]+)\"",
-                    "\"stream\"\\s*:\\s*\"([^\"]+)\"",
-                    "\"sources\"\\s*:\\s*\\[\\s*\"([^\"]+)\"",
-                    "\"m3u8\"\\s*:\\s*\"([^\"]+)\""
+                    "\"player\"\\s*:\\s*\"([^\"]+)\""
             };
 
             for (String pattern : patterns) {
@@ -533,31 +532,128 @@ public class FMoviesScraper {
                 java.util.regex.Matcher m = p.matcher(jsonResponse);
                 if (m.find()) {
                     String url = m.group(1);
-                    // Unescape JSON string
+                    // Unescape JSON
                     url = url.replace("\\/", "/")
-                            .replace("\\\"", "\"")
-                            .replace("\\\\", "\\")
-                            .replace("\\n", "")
-                            .replace("\\r", "")
-                            .replace("\\t", "");
-
-                    // Validate URL
-                    if (url.startsWith("http") || url.startsWith("//")) {
-                        return url;
-                    }
+                            .replace("\\\"", "\"");
+                    return url;
                 }
             }
 
-            Log.w(TAG, "No stream URL pattern matched in response");
-
         } catch (Exception e) {
-            Log.e(TAG, "Error parsing stream URL: " + e.getMessage());
+            Log.e(TAG, "Error parsing embed URL: " + e.getMessage());
         }
 
         return null;
     }
 
+    /**
+     * Decode watch URL to extract actual stream URL
+     * Format: https://netusa.xyz/watch/?v21#[base64_encoded_data]
+     */
+    private static String decodeWatchUrl(String watchUrl) {
+        try {
+            Log.d(TAG, "Decoding watch URL: " + watchUrl);
 
+            // Extract hash part
+            int hashIndex = watchUrl.indexOf('#');
+            if (hashIndex == -1) {
+                return watchUrl;
+            }
+
+            String base64Data = watchUrl.substring(hashIndex + 1);
+            Log.d(TAG, "Base64 data: " + base64Data);
+
+            // Decode base64
+            byte[] decodedBytes = android.util.Base64.decode(base64Data, android.util.Base64.DEFAULT);
+            String decodedString = new String(decodedBytes, "UTF-8");
+            Log.d(TAG, "Decoded string: " + decodedString);
+
+            // The decoded string might be another base64 or direct URL
+            // Try to decode again if it looks like base64
+            if (decodedString.matches("^[A-Za-z0-9+/=]+$") && !decodedString.startsWith("http")) {
+                try {
+                    byte[] secondDecode = android.util.Base64.decode(decodedString, android.util.Base64.DEFAULT);
+                    String secondDecoded = new String(secondDecode, "UTF-8");
+                    if (secondDecoded.startsWith("http") || secondDecoded.contains(".m3u8") || secondDecoded.contains(".mp4")) {
+                        Log.d(TAG, "Double decoded URL: " + secondDecoded);
+                        return secondDecoded;
+                    }
+                } catch (Exception e) {
+                    // Not double encoded, continue with first decode
+                }
+            }
+
+            // Check if decoded string is a URL
+            if (decodedString.startsWith("http")) {
+                return decodedString;
+            }
+
+            // If not a direct URL, might need to fetch the watch page
+            // and extract the actual stream URL from it
+            return fetchStreamFromWatchPage(watchUrl);
+
+        } catch (Exception e) {
+            Log.e(TAG, "Error decoding watch URL: " + e.getMessage());
+            e.printStackTrace();
+        }
+
+        return watchUrl;
+    }
+
+    /**
+     * Fetch and parse the watch page to extract stream URL
+     */
+    private static String fetchStreamFromWatchPage(String watchUrl) {
+        try {
+            Log.d(TAG, "Fetching watch page: " + watchUrl);
+
+            Document doc = Jsoup.connect(watchUrl)
+                    .userAgent("Mozilla/5.0")
+                    .referrer("https://ww4.fmovies.co/")
+                    .timeout(10000)
+                    .get();
+
+            // Look for video sources
+            Elements videos = doc.select("video source[src]");
+            if (!videos.isEmpty()) {
+                String src = videos.first().attr("src");
+                Log.d(TAG, "Found video source: " + src);
+                return src;
+            }
+
+            // Look for iframes
+            Elements iframes = doc.select("iframe[src]");
+            for (Element iframe : iframes) {
+                String src = iframe.attr("src");
+                if (src.contains(".m3u8") || src.contains("stream") || src.contains("player")) {
+                    Log.d(TAG, "Found iframe source: " + src);
+                    return src;
+                }
+            }
+
+            // Look for m3u8 or mp4 URLs in script tags
+            Elements scripts = doc.select("script");
+            for (Element script : scripts) {
+                String scriptContent = script.html();
+
+                // Look for URLs in the script
+                java.util.regex.Pattern urlPattern = java.util.regex.Pattern.compile(
+                        "(https?://[^\\s\"']+\\.(?:m3u8|mp4)(?:\\?[^\\s\"']*)?)"
+                );
+                java.util.regex.Matcher matcher = urlPattern.matcher(scriptContent);
+                if (matcher.find()) {
+                    String streamUrl = matcher.group(1);
+                    Log.d(TAG, "Found stream URL in script: " + streamUrl);
+                    return streamUrl;
+                }
+            }
+
+        } catch (IOException e) {
+            Log.e(TAG, "Error fetching watch page: " + e.getMessage());
+        }
+
+        return null;
+    }
 
     /**
      * Extract stream URL with all available servers

@@ -205,6 +205,7 @@ public class MovieDetailActivity extends FragmentActivity {
                 runOnUiThread(() -> {
                     playButton.setEnabled(true);
                     progressBar.setVisibility(View.GONE);
+                    playMovie("streamUrl");
                     Toast.makeText(MovieDetailActivity.this, 
                         "Unable to load stream: " + error, Toast.LENGTH_LONG).show();
                 });

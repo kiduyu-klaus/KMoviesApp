@@ -5,40 +5,53 @@
     android:layout_height="match_parent"
     android:background="@android:color/black">
 
-    <!-- ExoPlayer View -->
+    <!-- Player View -->
     <androidx.media3.ui.PlayerView
         android:id="@+id/playerView"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:keepScreenOn="true"
         app:resize_mode="fit"
         app:show_buffering="when_playing"
-        app:show_subtitle_button="true"
-        app:show_timeout="5000"
-        app:surface_type="surface_view"
-        app:use_controller="true" />
-
-    <!-- Title Overlay (shown before playback starts) -->
-    <TextView
-        android:id="@+id/playerTitle"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_centerHorizontal="true"
-        android:layout_marginTop="32dp"
-        android:background="@color/overlay_dark"
-        android:padding="16dp"
-        android:text="Loading..."
-        android:textColor="@color/text_primary"
-        android:textSize="24sp"
-        android:textStyle="bold" />
+        app:use_controller="true"
+        app:controller_layout_id="@layout/custom_player_controls" />
 
     <!-- Loading Indicator -->
     <ProgressBar
         android:id="@+id/loadingIndicator"
-        android:layout_width="80dp"
-        android:layout_height="80dp"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
         android:layout_centerInParent="true"
-        android:indeterminateTint="@color/accent"
-        android:visibility="visible" />
+        android:visibility="gone" />
+
+    <!-- Title Overlay -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignParentTop="true"
+        android:orientation="horizontal"
+        android:padding="16dp"
+        android:background="@drawable/gradient_top">
+
+        <TextView
+            android:id="@+id/playerTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textColor="@android:color/white"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:maxLines="2"
+            android:ellipsize="end" />
+
+        <ImageButton
+            android:id="@+id/qualityButton"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="8dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_quality"
+            android:contentDescription="Quality Settings"
+            android:tint="@android:color/white" />
+    </LinearLayout>
 
 </RelativeLayout>
