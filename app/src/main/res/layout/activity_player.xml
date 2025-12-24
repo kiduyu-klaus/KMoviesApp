@@ -83,6 +83,16 @@
             android:ellipsize="end" />
 
         <ImageButton
+            android:id="@+id/subtitleButton"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:src="@android:drawable/ic_menu_view"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Subtitle Settings"
+            android:layout_marginEnd="8dp"
+            app:tint="@android:color/white" />
+
+        <ImageButton
             android:id="@+id/qualityButton"
             android:layout_width="48dp"
             android:layout_height="48dp"

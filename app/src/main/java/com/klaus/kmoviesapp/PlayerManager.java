@@ -56,6 +56,7 @@ public class PlayerManager {
     private PlayerView playerView;
     private int currentQualityIndex = 0; // 0 = Auto
     private static Cache downloadCache;
+    private List<SubtitleInfo> currentSubtitles;
 
     public PlayerManager(Context context) {
         mContext = context;
@@ -94,6 +95,7 @@ public class PlayerManager {
     public void init(Context context, PlayerView playerView, String contentUrl,
                      Map<String, String> headers, List<SubtitleInfo> subtitles) {
         this.playerView = playerView;
+        this.currentSubtitles = subtitles;
 
         // Log the received URL for debugging
         Log.i(TAG, "Initializing player with URL: " + contentUrl);
@@ -314,6 +316,118 @@ public class PlayerManager {
         if (player != null) {
             player.seekTo(positionMs);
         }
+    }
+
+    /**
+     * Enable a specific subtitle track by index
+     */
+    public void enableSubtitle(int subtitleIndex) {
+        if (player == null || currentSubtitles == null ||
+                subtitleIndex < 0 || subtitleIndex >= currentSubtitles.size()) {
+            Log.e(TAG, "Invalid subtitle index: " + subtitleIndex);
+            return;
+        }
+
+        try {
+            TrackSelectionParameters.Builder parametersBuilder = trackSelector.getParameters().buildUpon();
+
+            // Enable text track rendering
+            parametersBuilder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false);
+
+            // Set preferred text language based on subtitle index
+            SubtitleInfo subtitle = currentSubtitles.get(subtitleIndex);
+            String language = getLanguageCode(subtitle.language);
+            parametersBuilder.setPreferredTextLanguage(language);
+
+            trackSelector.setParameters(parametersBuilder.build());
+
+            Log.i(TAG, "Enabled subtitle track: " + subtitle.language + " (code: " + language + ")");
+        } catch (Exception e) {
+            Log.e(TAG, "Error enabling subtitle: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Disable all subtitles
+     */
+    public void disableSubtitles() {
+        if (player == null) {
+            return;
+        }
+
+        try {
+            TrackSelectionParameters.Builder parametersBuilder = trackSelector.getParameters().buildUpon();
+
+            // Disable text track rendering
+            parametersBuilder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true);
+
+            trackSelector.setParameters(parametersBuilder.build());
+
+            Log.i(TAG, "Disabled all subtitles");
+        } catch (Exception e) {
+            Log.e(TAG, "Error disabling subtitles: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Get list of available subtitle tracks
+     */
+    public List<SubtitleInfo> getAvailableSubtitles() {
+        return currentSubtitles;
+    }
+
+    /**
+     * Convert language name to ISO 639 language code
+     * This is a basic implementation - expand as needed
+     */
+    private String getLanguageCode(String languageName) {
+        if (languageName == null) {
+            return "en";
+        }
+
+        String lower = languageName.toLowerCase();
+
+        // Common language mappings
+        if (lower.contains("english")) return "en";
+        if (lower.contains("spanish") || lower.contains("español")) return "es";
+        if (lower.contains("french") || lower.contains("français")) return "fr";
+        if (lower.contains("german") || lower.contains("deutsch")) return "de";
+        if (lower.contains("italian") || lower.contains("italiano")) return "it";
+        if (lower.contains("portuguese") || lower.contains("português")) return "pt";
+        if (lower.contains("russian") || lower.contains("русский")) return "ru";
+        if (lower.contains("japanese") || lower.contains("日本語")) return "ja";
+        if (lower.contains("korean") || lower.contains("한국어")) return "ko";
+        if (lower.contains("chinese") || lower.contains("中文")) return "zh";
+        if (lower.contains("arabic") || lower.contains("العربية")) return "ar";
+        if (lower.contains("hindi") || lower.contains("हिन्दी")) return "hi";
+        if (lower.contains("turkish") || lower.contains("türkçe")) return "tr";
+        if (lower.contains("dutch") || lower.contains("nederlands")) return "nl";
+        if (lower.contains("polish") || lower.contains("polski")) return "pl";
+        if (lower.contains("swedish") || lower.contains("svenska")) return "sv";
+        if (lower.contains("norwegian") || lower.contains("norsk")) return "no";
+        if (lower.contains("danish") || lower.contains("dansk")) return "da";
+        if (lower.contains("finnish") || lower.contains("suomi")) return "fi";
+        if (lower.contains("greek") || lower.contains("ελληνικά")) return "el";
+        if (lower.contains("hebrew") || lower.contains("עברית")) return "he";
+        if (lower.contains("thai") || lower.contains("ไทย")) return "th";
+        if (lower.contains("vietnamese") || lower.contains("tiếng việt")) return "vi";
+        if (lower.contains("indonesian") || lower.contains("bahasa")) return "id";
+        if (lower.contains("malay")) return "ms";
+        if (lower.contains("persian") || lower.contains("فارسی")) return "fa";
+        if (lower.contains("bengali") || lower.contains("বাংলা")) return "bn";
+        if (lower.contains("urdu") || lower.contains("اردو")) return "ur";
+        if (lower.contains("croatian") || lower.contains("hrvatski")) return "hr";
+        if (lower.contains("romanian") || lower.contains("română")) return "ro";
+        if (lower.contains("czech") || lower.contains("čeština")) return "cs";
+        if (lower.contains("hungarian") || lower.contains("magyar")) return "hu";
+        if (lower.contains("slovak") || lower.contains("slovenčina")) return "sk";
+        if (lower.contains("ukrainian") || lower.contains("українська")) return "uk";
+        if (lower.contains("burmese") || lower.contains("မြန်မာ")) return "my";
+        if (lower.contains("kurdish") || lower.contains("کوردی")) return "ku";
+
+        // Default to English if unknown
+        Log.w(TAG, "Unknown language: " + languageName + ", defaulting to 'en'");
+        return "en";
     }
 
     public void pause() {

@@ -32,6 +32,7 @@ public class PlayerActivity extends FragmentActivity {
     private ProgressBar loadingIndicator;
     private TextView titleTextView;
     private ImageButton qualityButton;
+    private ImageButton subtitleButton;
     private View errorContainer;
     private TextView errorTextView;
 
@@ -40,6 +41,7 @@ public class PlayerActivity extends FragmentActivity {
     private String tmdbId;
     private Map<String, String> availableQualities;
     private List<PlayerManager.SubtitleInfo> subtitles;
+    private int currentSubtitleIndex = -1; // -1 means no subtitle
 
     @OptIn(markerClass = UnstableApi.class)
     @Override
@@ -73,6 +75,7 @@ public class PlayerActivity extends FragmentActivity {
         loadingIndicator = findViewById(R.id.loadingIndicator);
         titleTextView = findViewById(R.id.playerTitle);
         qualityButton = findViewById(R.id.qualityButton);
+        subtitleButton = findViewById(R.id.subtitleButton);
         errorContainer = findViewById(R.id.errorContainer);
         errorTextView = findViewById(R.id.errorText);
 
@@ -84,6 +87,7 @@ public class PlayerActivity extends FragmentActivity {
         errorContainer.setVisibility(View.GONE);
         loadingIndicator.setVisibility(View.VISIBLE);
         qualityButton.setEnabled(false);
+        subtitleButton.setEnabled(false);
     }
 
     private void loadStreamData() {
@@ -129,7 +133,9 @@ public class PlayerActivity extends FragmentActivity {
             mplayer.init(this, playerView, streamUrl, headers, subtitles);
 
             setupQualityButton();
+            setupSubtitleButton();
             qualityButton.setEnabled(true);
+            subtitleButton.setEnabled(subtitles != null && !subtitles.isEmpty());
 
             Log.d(TAG, "Player initialized successfully");
         } catch (Exception e) {
@@ -195,6 +201,70 @@ public class PlayerActivity extends FragmentActivity {
         }
 
         qualityButton.setOnClickListener(v -> showQualityDialog());
+    }
+
+    private void setupSubtitleButton() {
+        if (subtitles == null || subtitles.isEmpty()) {
+            subtitleButton.setVisibility(View.GONE);
+            return;
+        }
+
+        subtitleButton.setOnClickListener(v -> showSubtitleDialog());
+    }
+
+    private void showSubtitleDialog() {
+        if (subtitles == null || subtitles.isEmpty()) {
+            Toast.makeText(this, "No subtitles available", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        // Create subtitle list with "Off" option at the beginning
+        List<String> subtitleLabels = new ArrayList<>();
+        subtitleLabels.add("Off");
+
+        for (PlayerManager.SubtitleInfo subtitle : subtitles) {
+            subtitleLabels.add(subtitle.language);
+        }
+
+        String[] subtitleOptions = subtitleLabels.toArray(new String[0]);
+
+        // Current selection (+1 because "Off" is at index 0)
+        int currentSelection = currentSubtitleIndex + 1;
+
+        new AlertDialog.Builder(this)
+                .setTitle("Select Subtitles")
+                .setSingleChoiceItems(subtitleOptions, currentSelection, (dialog, which) -> {
+                    if (which == 0) {
+                        // User selected "Off"
+                        disableSubtitles();
+                        currentSubtitleIndex = -1;
+                        Toast.makeText(this, "Subtitles disabled", Toast.LENGTH_SHORT).show();
+                    } else {
+                        // User selected a subtitle track (subtract 1 to get actual index)
+                        int subtitleIndex = which - 1;
+                        enableSubtitle(subtitleIndex);
+                        currentSubtitleIndex = subtitleIndex;
+                        String language = subtitles.get(subtitleIndex).language;
+                        Toast.makeText(this, "Subtitles: " + language, Toast.LENGTH_SHORT).show();
+                    }
+                    dialog.dismiss();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void enableSubtitle(int subtitleIndex) {
+        if (mplayer != null && subtitles != null && subtitleIndex >= 0 && subtitleIndex < subtitles.size()) {
+            mplayer.enableSubtitle(subtitleIndex);
+            Log.d(TAG, "Enabled subtitle: " + subtitles.get(subtitleIndex).language);
+        }
+    }
+
+    private void disableSubtitles() {
+        if (mplayer != null) {
+            mplayer.disableSubtitles();
+            Log.d(TAG, "Disabled all subtitles");
+        }
     }
 
     private void showQualityDialog() {
@@ -271,6 +341,7 @@ public class PlayerActivity extends FragmentActivity {
         errorContainer.setVisibility(View.VISIBLE);
         errorTextView.setText(message);
         qualityButton.setEnabled(false);
+        subtitleButton.setEnabled(false);
 
         Log.e(TAG, "Showing error: " + message);
         Toast.makeText(this, message, Toast.LENGTH_LONG).show();
